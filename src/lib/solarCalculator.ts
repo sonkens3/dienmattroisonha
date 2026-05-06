@@ -1,0 +1,152 @@
+import { trimNumber } from "@/lib/format";
+
+export type SolarInput = {
+  monthlyBill: number;
+  averageElectricPrice?: number;
+  projectType?: string;
+  phase?: "1phase" | "3phase" | "unknown";
+  dayUsageLevel: "low" | "medium" | "high";
+  roofArea?: number;
+  wantStorage?: boolean;
+};
+
+export type SolarEstimate = {
+  recommendedKwMin: number;
+  recommendedKwMax: number;
+  panelCountMin: number;
+  panelCountMax: number;
+  roofAreaMin: number;
+  roofAreaMax: number;
+  dailyOutputMin: number;
+  dailyOutputMax: number;
+  investmentMin: number;
+  investmentMax: number;
+  monthlySavingMin: number;
+  monthlySavingMax: number;
+  paybackMin: number;
+  paybackMax: number;
+  monthlyKwh: number;
+  notes: string[];
+};
+
+const DEFAULT_ELECTRIC_PRICE = 3000;
+const SELF_USE_RATE = {
+  low: 0.45,
+  medium: 0.65,
+  high: 0.8,
+};
+
+export function estimateSolarSystem(input: SolarInput): SolarEstimate {
+  const notes: string[] = [];
+  const monthlyBill = Math.max(input.monthlyBill || 0, 0);
+  const averageElectricPrice =
+    input.averageElectricPrice && input.averageElectricPrice > 0
+      ? input.averageElectricPrice
+      : DEFAULT_ELECTRIC_PRICE;
+
+  if (!input.averageElectricPrice) {
+    notes.push("Đang dùng giá điện trung bình mặc định 3.000 đ/kWh.");
+  }
+
+  if (monthlyBill <= 0) {
+    notes.push("Chưa có tiền điện rõ ràng, hệ thống đang dùng gói 3-5kW để tham khảo.");
+  }
+
+  const monthlyKwh = monthlyBill > 0 ? monthlyBill / averageElectricPrice : 0;
+  const [baseMin, baseMax] = getRecommendedKwRange(monthlyBill);
+  let recommendedKwMin = baseMin;
+  let recommendedKwMax = baseMax;
+
+  if (input.dayUsageLevel === "low") {
+    recommendedKwMin *= 0.75;
+    recommendedKwMax *= 0.85;
+    notes.push("Dùng điện ban ngày ít nên ưu tiên công suất vừa phải; kỹ thuật cần kiểm tra kỹ tỷ lệ tự dùng.");
+  }
+
+  if (input.dayUsageLevel === "high") {
+    recommendedKwMax *= 1.1;
+    notes.push("Dùng điện ban ngày nhiều giúp tăng tỷ lệ tự dùng và cải thiện mốc hoàn vốn.");
+  }
+
+  recommendedKwMin = roundToHalf(recommendedKwMin);
+  recommendedKwMax = roundToHalf(recommendedKwMax);
+
+  const panelCountMin = Math.ceil((recommendedKwMin * 1000) / 635);
+  const panelCountMax = Math.ceil((recommendedKwMax * 1000) / 635);
+  const roofAreaMin = panelCountMin * 3;
+  const roofAreaMax = panelCountMax * 3;
+  const dailyOutputMin = round(recommendedKwMin * 3.5);
+  const dailyOutputMax = round(recommendedKwMax * 4.5);
+  const [costMin] = getCostPerKw(recommendedKwMin);
+  const [, costMax] = getCostPerKw(recommendedKwMax);
+
+  let investmentMin = recommendedKwMin * costMin;
+  let investmentMax = recommendedKwMax * costMax;
+
+  if (input.wantStorage) {
+    investmentMin += 35_000_000;
+    investmentMax += 120_000_000;
+    notes.push("Có pin lưu trữ sẽ tăng chi phí đầu tư; cần tính riêng dung lượng pin và tải backup.");
+  }
+
+  const selfUseRate = SELF_USE_RATE[input.dayUsageLevel];
+  const monthlySavingMin = dailyOutputMin * 30 * averageElectricPrice * selfUseRate;
+  const monthlySavingMax = dailyOutputMax * 30 * averageElectricPrice * selfUseRate;
+  const paybackMin = investmentMin / Math.max(monthlySavingMax, 1) / 12;
+  const paybackMax = investmentMax / Math.max(monthlySavingMin, 1) / 12;
+
+  if (input.roofArea && input.roofArea < roofAreaMin) {
+    notes.push(
+      `Diện tích mái nhập vào khoảng ${trimNumber(input.roofArea)}m², nhỏ hơn mức tối thiểu ước tính ${roofAreaMin}m².`,
+    );
+  }
+
+  if (input.phase !== "3phase" && recommendedKwMax >= 12) {
+    notes.push("Hệ công suất trên 10-12kW thường cần kiểm tra kỹ điện 1 pha/3 pha và khả năng đấu nối.");
+  }
+
+  notes.push("Cần khảo sát hướng mái, bóng che, tủ điện, đường dây và hóa đơn thực tế trước khi chốt phương án.");
+
+  return {
+    recommendedKwMin,
+    recommendedKwMax,
+    panelCountMin,
+    panelCountMax,
+    roofAreaMin,
+    roofAreaMax,
+    dailyOutputMin,
+    dailyOutputMax,
+    investmentMin: Math.round(investmentMin),
+    investmentMax: Math.round(investmentMax),
+    monthlySavingMin: Math.round(monthlySavingMin),
+    monthlySavingMax: Math.round(monthlySavingMax),
+    paybackMin: round(paybackMin),
+    paybackMax: round(paybackMax),
+    monthlyKwh: Math.round(monthlyKwh),
+    notes,
+  };
+}
+
+export function getRecommendedKwRange(monthlyBill: number): [number, number] {
+  if (monthlyBill <= 0) return [3, 5];
+  if (monthlyBill < 2_000_000) return [3, 5];
+  if (monthlyBill < 4_000_000) return [5, 8];
+  if (monthlyBill < 7_000_000) return [8, 12];
+  if (monthlyBill < 12_000_000) return [12, 20];
+  return [20, 50];
+}
+
+export function getCostPerKw(systemKw: number): [number, number] {
+  if (systemKw <= 5) return [12_000_000, 16_000_000];
+  if (systemKw <= 10) return [11_000_000, 15_000_000];
+  if (systemKw <= 20) return [10_000_000, 14_000_000];
+  return [9_000_000, 13_000_000];
+}
+
+function round(value: number) {
+  return Number(value.toFixed(1));
+}
+
+function roundToHalf(value: number) {
+  return Math.max(1, Math.round(value * 2) / 2);
+}
