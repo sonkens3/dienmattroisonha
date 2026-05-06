@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AdminAuthGate } from "@/components/AdminAuthGate";
 import { AdminLeadTable } from "@/components/AdminLeadTable";
 import { AdminProjectTable } from "@/components/AdminProjectTable";
 import { SectionHeading } from "@/components/SectionHeading";
@@ -12,15 +13,17 @@ export default function AdminPage() {
   return (
     <section className="bg-slate-50 py-16">
       <div className="section-shell">
-        <SectionHeading
-          eyebrow="Admin mock"
-          title="Quản lý demo lead và dự án"
-          description="Bản MVP chưa dùng database. Lead được lưu trong trình duyệt để kiểm tra luồng form; dự án nằm trong file dữ liệu."
-        />
-        <div className="mt-8 grid gap-6">
-          <AdminLeadTable />
-          <AdminProjectTable />
-        </div>
+        <AdminAuthGate>
+          <SectionHeading
+            eyebrow="Admin mock"
+            title="Quản lý demo lead và dự án"
+            description="Bản MVP chưa dùng database. Lead được lưu trong trình duyệt để kiểm tra luồng form; dự án nằm trong file dữ liệu."
+          />
+          <div className="mt-8 grid gap-6">
+            <AdminLeadTable />
+            <AdminProjectTable />
+          </div>
+        </AdminAuthGate>
       </div>
     </section>
   );
