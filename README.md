@@ -32,6 +32,7 @@ TELEGRAM_BOT_TOKEN="token_bot_telegram"
 TELEGRAM_CHAT_ID="chat_id_nhan_thong_bao"
 GOOGLE_SHEET_WEBHOOK_URL="url_web_app_google_apps_script"
 GOOGLE_SHEET_WEBHOOK_SECRET="chuoi_bi_mat_tu_chon"
+NEXT_PUBLIC_LEAD_WEBHOOK_URL="url_web_app_google_apps_script"
 ```
 
 ### Telegram
@@ -48,10 +49,13 @@ Form tư vấn sẽ gửi tin nhắn lead về Telegram. Nếu khách upload ả
 1. Tạo Google Sheet mới.
 2. Vào `Extensions` > `Apps Script`.
 3. Dán nội dung file `docs/google-apps-script-leads.js`.
-4. Nếu dùng `GOOGLE_SHEET_WEBHOOK_SECRET`, điền cùng giá trị vào biến `WEBHOOK_SECRET` trong Apps Script.
+4. Vào `Project Settings` > `Script Properties`, thêm:
+   - `TELEGRAM_BOT_TOKEN`: token bot Telegram.
+   - `TELEGRAM_CHAT_ID`: chat ID nhận lead.
+   - `LEAD_NOTIFY_FROM_NAME`: `Điện mặt trời Sơn Hà`.
 5. Deploy: `Deploy` > `New deployment` > chọn `Web app`.
-6. Chọn quyền truy cập `Anyone` hoặc `Anyone with the link`, rồi copy Web app URL vào `GOOGLE_SHEET_WEBHOOK_URL`.
-7. Khởi động lại web.
+6. Chọn `Execute as: Me` và `Who has access: Anyone`, rồi copy Web app URL vào `GOOGLE_SHEET_WEBHOOK_URL` hoặc `NEXT_PUBLIC_LEAD_WEBHOOK_URL`.
+7. Nếu cập nhật code Apps Script sau này, chọn `Deploy` > `Manage deployments` > `Edit` > `New version` để URL cũ vẫn dùng được.
 
 Google Sheet sẽ lưu thông tin lead, nguồn gửi, số điện thoại, tiền điện, nhu cầu, ghi chú và tên file ảnh. File ảnh thật được gửi về Telegram.
 
@@ -69,7 +73,7 @@ URL mặc định sau khi bật Pages:
 https://sonkens3.github.io/dienmattroisonha/
 ```
 
-GitHub Pages chỉ chạy được HTML/CSS/JS tĩnh, không chạy được server API `/api/leads`. Muốn form gửi Telegram bằng token bảo mật thì nên deploy bản production trên Vercel hoặc hosting Node.js. Bản GitHub Pages dùng để chạy thử giao diện trước.
+GitHub Pages chỉ chạy được HTML/CSS/JS tĩnh, không chạy được server API `/api/leads`. Bản này đã cấu hình để form và chatbot gửi lead trực tiếp sang Google Apps Script qua `NEXT_PUBLIC_LEAD_WEBHOOK_URL`; Apps Script sẽ ghi Google Sheet và gửi Telegram.
 
 ## Các trang chính
 

@@ -3,7 +3,7 @@
 import { Bot, ImagePlus, MessageCircle, Send, X } from "lucide-react";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { formatRange, formatVnd } from "@/lib/format";
-import { saveLeadToStorage, type LeadRecord } from "@/lib/leads";
+import { saveLeadToStorage, submitLeadRecord, type LeadFileInput, type LeadRecord } from "@/lib/leads";
 import { estimateSolarSystem, type SolarInput } from "@/lib/solarCalculator";
 
 type ChatStep = "projectType" | "bill" | "phase" | "dayUsage" | "roofArea" | "storage" | "done";
@@ -490,44 +490,17 @@ function saveChatLead(
 
 async function submitLeadRecordToServer(lead: LeadRecord, files: File[]) {
   try {
-    if (files.length) {
-      const formData = new FormData();
+    const leadFiles: LeadFileInput[] = files.map((file, index) => ({
+      field: "chatImage",
+      label: `Ảnh khách gửi qua chat ${index + 1}`,
+      file,
+    }));
 
-      Object.entries({
-        ...lead,
-        source: "Chatbot",
-        pageUrl: window.location.href,
-      }).forEach(([key, value]) => {
-        formData.set(key, String(value ?? ""));
-      });
-
-      files.forEach((file) => {
-        formData.append("chatImages", file, file.name);
-      });
-
-      const response = await fetch("/api/leads", {
-        method: "POST",
-        body: formData,
-      });
-
-      return (await response.json()) as { ok?: boolean; configured?: boolean };
-    }
-
-    const response = await fetch("/api/leads", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        lead: {
-          ...lead,
-          source: "Chatbot",
-          pageUrl: window.location.href,
-        },
-      }),
+    return submitLeadRecord(lead, {
+      source: "Chatbot",
+      pageUrl: window.location.href,
+      files: leadFiles,
     });
-
-    return (await response.json()) as { ok?: boolean; configured?: boolean };
   } catch {
     return null;
   }

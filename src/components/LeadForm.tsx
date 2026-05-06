@@ -3,7 +3,7 @@
 import { ImagePlus, Send, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { CurrencyInput } from "@/components/CurrencyInput";
-import { saveLeadToStorage, type LeadRecord } from "@/lib/leads";
+import { saveLeadToStorage, submitLeadRecord, type LeadFileInput, type LeadRecord } from "@/lib/leads";
 
 type SubmitState = {
   status: "idle" | "submitting" | "sent" | "warning" | "error";
@@ -55,13 +55,17 @@ export function LeadForm() {
     });
 
     try {
-      const response = await fetch("/api/leads", {
-        method: "POST",
-        body: formData,
+      const files: LeadFileInput[] = [
+        billImage ? { field: "billImage", label: "Ảnh hóa đơn điện", file: billImage } : null,
+        roofImage ? { field: "roofImage", label: "Ảnh mái nhà", file: roofImage } : null,
+      ].filter(Boolean) as LeadFileInput[];
+      const data = await submitLeadRecord(lead, {
+        source: "Form tư vấn",
+        pageUrl: window.location.href,
+        files,
       });
-      const data = await response.json().catch(() => null);
 
-      if (response.ok && data?.ok) {
+      if (data?.ok) {
         form.reset();
         setMonthlyBill(0);
         setSubmitState({
@@ -72,7 +76,7 @@ export function LeadForm() {
         return;
       }
 
-      if (response.ok && data?.configured === false) {
+      if (data?.configured === false) {
         setSubmitState({
           status: "warning",
           message:
