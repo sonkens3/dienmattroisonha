@@ -12,6 +12,20 @@ function doGet() {
   });
 }
 
+function testTelegramAuthorization() {
+  const token = getScriptProperty("TELEGRAM_BOT_TOKEN");
+  const chatId = getScriptProperty("TELEGRAM_CHAT_ID");
+
+  if (!token || !chatId) {
+    throw new Error("Chưa có TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID trong Script Properties.");
+  }
+
+  postTelegram(token, "sendMessage", {
+    chat_id: chatId,
+    text: "Test Telegram từ Google Apps Script - Điện mặt trời Sơn Hà",
+  });
+}
+
 function doPost(e) {
   try {
     const payload = JSON.parse((e.postData && e.postData.contents) || "{}");
@@ -23,7 +37,7 @@ function doPost(e) {
     const lead = normalizeLead(payload.lead || {});
     const files = Array.isArray(payload.files) ? payload.files : [];
     const sheetResult = appendLeadToSheet(lead, files);
-    const telegramResult = sendLeadToTelegram(lead, files);
+    const telegramResult = safeSendLeadToTelegram(lead, files);
 
     return jsonResponse({
       ok: sheetResult.status === "sent" || telegramResult.status === "sent",
@@ -34,6 +48,18 @@ function doPost(e) {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     });
+  }
+}
+
+function safeSendLeadToTelegram(lead, files) {
+  try {
+    return sendLeadToTelegram(lead, files);
+  } catch (error) {
+    return {
+      channel: "telegram",
+      status: "failed",
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
