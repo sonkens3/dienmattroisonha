@@ -24,6 +24,7 @@ export function ChatbotWidget() {
   const [inputText, setInputText] = useState("");
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [submittedPhone, setSubmittedPhone] = useState<string | null>(null);
+  const [imagePhonePrompted, setImagePhonePrompted] = useState(false);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
   const [answers, setAnswers] = useState<Partial<SolarInput>>({
     dayUsageLevel: "medium",
@@ -149,20 +150,24 @@ export function ChatbotWidget() {
     if (phone) {
       await sendLeadFromChat({
         phone,
-        text,
+        text: text || `Khách gửi số điện thoại/Zalo ${phone}`,
         files: selectedImages,
-        successMessage: `Cảm ơn anh/chị đã để lại số ${phone}. Em đã gửi thông tin và ảnh đính kèm đến bộ phận kỹ thuật, kỹ thuật sẽ liên hệ sớm nhất để tư vấn trực tiếp.`,
+        successMessage: buildPhoneThanksMessage(phone, selectedImages.length > 0),
       });
       setSubmittedPhone(phone);
+      setImagePhonePrompted(false);
       setStep("done");
       return;
     }
 
-    if (!text && selectedImages.length && !submittedPhone) {
-      append(
-        "bot",
-        "Anh/chị đã chọn ảnh rồi. Anh/chị nhập thêm số điện thoại/Zalo rồi bấm gửi để em chuyển ảnh và thông tin sang kỹ thuật.",
-      );
+    if (selectedImages.length && !submittedPhone) {
+      if (text || !imagePhonePrompted) {
+        append("user", [text, buildImageListMessage(selectedImages)].filter(Boolean).join("\n"));
+      }
+      if (text || !imagePhonePrompted) {
+        append("bot", buildImagePhonePromptMessage());
+      }
+      setImagePhonePrompted(true);
       return;
     }
 
@@ -225,12 +230,14 @@ export function ChatbotWidget() {
 
     if (delivery?.ok) {
       setSelectedImages([]);
+      setImagePhonePrompted(false);
       append("bot", successMessage);
       return;
     }
 
     if (delivery?.configured === false) {
       setSelectedImages([]);
+      setImagePhonePrompted(false);
       append(
         "bot",
         `Cảm ơn anh/chị đã để lại số ${phone}. Em đã lưu thông tin tạm thời, nhưng hệ thống chưa cấu hình Google Sheet/Telegram để gửi thật.`,
@@ -251,6 +258,10 @@ export function ChatbotWidget() {
 
     if (files.length) {
       setSelectedImages((current) => [...current, ...files].slice(0, 6));
+      if (!submittedPhone && !imagePhonePrompted) {
+        append("bot", buildImagePhonePromptMessage());
+        setImagePhonePrompted(true);
+      }
     }
 
     event.currentTarget.value = "";
@@ -401,6 +412,20 @@ function getQuickReplies(step: ChatStep) {
   if (step === "roofArea") return ["30m²", "60m²", "90m²", "120m²", "Nhập số khác"];
   if (step === "storage") return ["Chưa cần", "Có lưu trữ", "Cần backup"];
   return [];
+}
+
+function buildImageListMessage(files: File[]) {
+  return files.length ? `Ảnh khách gửi: ${files.map((file) => file.name).join(", ")}` : "";
+}
+
+function buildImagePhonePromptMessage() {
+  return "Em đã nhận ảnh anh/chị gửi. Anh/chị để lại thêm số điện thoại/Zalo, em sẽ chuyển ảnh và thông tin đến kỹ thuật để liên hệ lại sớm nhất và tư vấn trực tiếp.";
+}
+
+function buildPhoneThanksMessage(phone: string, hasImages: boolean) {
+  const leadInfo = hasImages ? "số điện thoại/Zalo, ảnh và nội dung trao đổi" : "số điện thoại/Zalo và nội dung trao đổi";
+
+  return `Cảm ơn anh/chị đã để lại số ${phone}. Em đã ghi nhận và chuyển ${leadInfo} đến kỹ thuật. Kỹ thuật sẽ liên hệ lại sớm nhất để tư vấn trực tiếp cho anh/chị.`;
 }
 
 function buildResultMessage(input: Partial<SolarInput>) {
