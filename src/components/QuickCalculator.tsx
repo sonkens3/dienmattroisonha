@@ -193,7 +193,7 @@ export function EstimateResult({ result }: { result: SolarEstimate }) {
     },
     {
       label: "Có thể giảm mỗi tháng",
-      value: `${formatVnd(result.monthlySavingMin)} - ${formatVnd(result.monthlySavingMax)}`,
+      value: `${formatVnd(result.monthlySavingMin)} - ${formatVnd(result.monthlySavingMax)} (${result.billReductionMin}-${result.billReductionMax}% hóa đơn)`,
       icon: CheckCircle2,
     },
   ];

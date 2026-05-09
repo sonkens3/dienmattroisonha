@@ -23,6 +23,8 @@ export type SolarEstimate = {
   investmentMax: number;
   monthlySavingMin: number;
   monthlySavingMax: number;
+  billReductionMin: number;
+  billReductionMax: number;
   paybackMin: number;
   paybackMax: number;
   monthlyKwh: number;
@@ -30,11 +32,14 @@ export type SolarEstimate = {
 };
 
 const DEFAULT_ELECTRIC_PRICE = 3000;
-const SELF_USE_RATE = {
-  low: 0.45,
-  medium: 0.65,
-  high: 0.8,
+const BILL_REDUCTION_TARGET = {
+  low: [0.7, 0.82],
+  medium: [0.75, 0.88],
+  high: [0.8, 0.95],
 };
+const MIN_SYSTEM_KW = 3;
+const MIN_DAILY_KWH_PER_KW = 3.5;
+const MAX_DAILY_KWH_PER_KW = 4.5;
 
 export function estimateSolarSystem(input: SolarInput): SolarEstimate {
   const notes: string[] = [];
@@ -53,19 +58,23 @@ export function estimateSolarSystem(input: SolarInput): SolarEstimate {
   }
 
   const monthlyKwh = monthlyBill > 0 ? monthlyBill / averageElectricPrice : 0;
+  const [targetReductionMin, targetReductionMax] = getBillReductionTarget(
+    input.dayUsageLevel,
+    input.wantStorage,
+  );
   const [baseMin, baseMax] = getRecommendedKwRange(monthlyBill);
   let recommendedKwMin = baseMin;
   let recommendedKwMax = baseMax;
 
-  if (input.dayUsageLevel === "low") {
-    recommendedKwMin *= 0.75;
-    recommendedKwMax *= 0.85;
-    notes.push("Dùng điện ban ngày ít nên ưu tiên công suất vừa phải; kỹ thuật cần kiểm tra kỹ tỷ lệ tự dùng.");
-  }
-
-  if (input.dayUsageLevel === "high") {
-    recommendedKwMax *= 1.1;
-    notes.push("Dùng điện ban ngày nhiều giúp tăng tỷ lệ tự dùng và cải thiện mốc hoàn vốn.");
+  if (monthlyKwh > 0) {
+    recommendedKwMin = Math.max(
+      MIN_SYSTEM_KW,
+      monthlyKwh * targetReductionMin / (30 * MIN_DAILY_KWH_PER_KW),
+    );
+    recommendedKwMax = Math.max(
+      recommendedKwMin + 1,
+      monthlyKwh * targetReductionMax / (30 * MAX_DAILY_KWH_PER_KW),
+    );
   }
 
   recommendedKwMin = roundToHalf(recommendedKwMin);
@@ -89,9 +98,18 @@ export function estimateSolarSystem(input: SolarInput): SolarEstimate {
     notes.push("Có pin lưu trữ sẽ tăng chi phí đầu tư; cần tính riêng dung lượng pin và tải backup.");
   }
 
-  const selfUseRate = SELF_USE_RATE[input.dayUsageLevel];
-  const monthlySavingMin = dailyOutputMin * 30 * averageElectricPrice * selfUseRate;
-  const monthlySavingMax = dailyOutputMax * 30 * averageElectricPrice * selfUseRate;
+  const productionSavingMin = dailyOutputMin * 30 * averageElectricPrice;
+  const productionSavingMax = dailyOutputMax * 30 * averageElectricPrice;
+  const monthlySavingMin =
+    monthlyBill > 0
+      ? Math.min(monthlyBill * targetReductionMin, productionSavingMin)
+      : productionSavingMin * 0.7;
+  const monthlySavingMax =
+    monthlyBill > 0
+      ? Math.min(monthlyBill * targetReductionMax, productionSavingMax, monthlyBill * 0.98)
+      : productionSavingMax * 0.82;
+  const billReductionMin = monthlyBill > 0 ? monthlySavingMin / monthlyBill : 0;
+  const billReductionMax = monthlyBill > 0 ? monthlySavingMax / monthlyBill : 0;
   const paybackMin = investmentMin / Math.max(monthlySavingMax, 1) / 12;
   const paybackMax = investmentMax / Math.max(monthlySavingMin, 1) / 12;
 
@@ -105,6 +123,9 @@ export function estimateSolarSystem(input: SolarInput): SolarEstimate {
     notes.push("Hệ công suất trên 10-12kW thường cần kiểm tra kỹ điện 1 pha/3 pha và khả năng đấu nối.");
   }
 
+  notes.push(
+    "Mức giảm tiền điện đang lấy theo phương án thiết kế bám tải phù hợp, thường mục tiêu khoảng 70-90% hóa đơn khi mái và phụ tải ban ngày đáp ứng.",
+  );
   notes.push("Cần khảo sát hướng mái, bóng che, tủ điện, đường dây và hóa đơn thực tế trước khi chốt phương án.");
 
   return {
@@ -120,6 +141,8 @@ export function estimateSolarSystem(input: SolarInput): SolarEstimate {
     investmentMax: Math.round(investmentMax),
     monthlySavingMin: Math.round(monthlySavingMin),
     monthlySavingMax: Math.round(monthlySavingMax),
+    billReductionMin: Math.round(billReductionMin * 100),
+    billReductionMax: Math.round(billReductionMax * 100),
     paybackMin: round(paybackMin),
     paybackMax: round(paybackMax),
     monthlyKwh: Math.round(monthlyKwh),
@@ -141,6 +164,17 @@ export function getCostPerKw(systemKw: number): [number, number] {
   if (systemKw <= 10) return [11_000_000, 15_000_000];
   if (systemKw <= 20) return [10_000_000, 14_000_000];
   return [9_000_000, 13_000_000];
+}
+
+function getBillReductionTarget(
+  dayUsageLevel: SolarInput["dayUsageLevel"],
+  wantStorage?: boolean,
+): [number, number] {
+  const target = BILL_REDUCTION_TARGET[dayUsageLevel];
+
+  if (!wantStorage) return target as [number, number];
+
+  return [Math.max(target[0], 0.8), Math.min(0.95, target[1] + 0.05)];
 }
 
 function round(value: number) {

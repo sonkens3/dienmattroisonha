@@ -445,7 +445,7 @@ function buildResultMessage(input: Partial<SolarInput>) {
     "kW",
   )}. Cần khoảng ${estimate.panelCountMin}-${estimate.panelCountMax} tấm pin, mái ${estimate.roofAreaMin}-${estimate.roofAreaMax}m², chi phí ${formatVnd(
     estimate.investmentMin,
-  )}-${formatVnd(estimate.investmentMax)}, thời gian hoàn vốn tốt nhất từ khoảng ${estimate.paybackMin} năm. Anh/chị có thể để lại số điện thoại/Zalo và bấm nút ảnh bên dưới để gửi hóa đơn điện hoặc ảnh mái, kỹ thuật sẽ tính chính xác hơn.`;
+  )}-${formatVnd(estimate.investmentMax)}, dự kiến giảm khoảng ${estimate.billReductionMin}-${estimate.billReductionMax}% tiền điện mỗi tháng, thời gian hoàn vốn tốt nhất từ khoảng ${estimate.paybackMin} năm. Anh/chị có thể để lại số điện thoại/Zalo và bấm nút ảnh bên dưới để gửi hóa đơn điện hoặc ảnh mái, kỹ thuật sẽ tính chính xác hơn.`;
 }
 
 function parseMoney(text: string) {
