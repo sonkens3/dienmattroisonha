@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, ImagePlus, MessageCircle, Send, X } from "lucide-react";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { formatRange, formatVnd } from "@/lib/format";
 import { saveLeadToStorage, submitLeadRecord, type LeadFileInput, type LeadRecord } from "@/lib/leads";
 import { estimateSolarSystem, type SolarInput } from "@/lib/solarCalculator";
@@ -18,6 +18,7 @@ const initialMessage =
 
 export function ChatbotWidget() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageIdRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<ChatStep>("projectType");
@@ -35,6 +36,23 @@ export function ChatbotWidget() {
   ]);
 
   const quickReplies = useMemo(() => getQuickReplies(step), [step]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const messageList = messageListRef.current;
+
+      if (!messageList) return;
+
+      messageList.scrollTo({
+        top: messageList.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, open, quickReplies.length, selectedImages.length, isSubmittingLead]);
 
   function createMessage(role: Message["role"], text: string): Message {
     messageIdRef.current += 1;
@@ -293,7 +311,7 @@ export function ChatbotWidget() {
       </button>
 
       {open ? (
-        <section className="fixed bottom-[5.25rem] left-3 right-3 z-50 flex max-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl sm:bottom-6 sm:left-auto sm:right-5 sm:w-[390px] sm:max-w-sm">
+        <section className="fixed bottom-[5.25rem] left-3 right-3 z-50 flex h-[calc(100dvh-7rem)] max-h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:bottom-6 sm:left-auto sm:right-5 sm:h-[min(620px,calc(100dvh-3rem))] sm:w-[390px] sm:max-w-sm">
           <div className="flex items-center justify-between gap-3 bg-slate-950 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <Bot size={20} aria-hidden />
@@ -309,7 +327,10 @@ export function ChatbotWidget() {
             </button>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
+          <div
+            ref={messageListRef}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4 scroll-smooth"
+          >
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -322,6 +343,11 @@ export function ChatbotWidget() {
                 {message.text}
               </div>
             ))}
+            {isSubmittingLead ? (
+              <div className="max-w-[78%] rounded-lg bg-white px-3 py-2 text-sm leading-6 text-slate-500 shadow-sm">
+                Đang chuyển thông tin đến kỹ thuật...
+              </div>
+            ) : null}
           </div>
 
           {quickReplies.length ? (
@@ -344,7 +370,7 @@ export function ChatbotWidget() {
               Bấm nút ảnh để gửi hóa đơn điện hoặc ảnh mái cho kỹ thuật.
             </p>
             {selectedImages.length ? (
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 flex max-h-16 flex-wrap gap-2 overflow-y-auto pr-1">
                 {selectedImages.map((file, index) => (
                   <span
                     key={`${file.name}-${index}`}
