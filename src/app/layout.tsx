@@ -21,7 +21,9 @@ export const metadata: Metadata = {
 };
 
 const publicAssetBasePath =
-  process.env.GITHUB_PAGES === "true" ? `/${process.env.GITHUB_PAGES_REPO ?? "dienmattroisonha"}` : "";
+  process.env.GITHUB_PAGES === "true" && process.env.GITHUB_PAGES_CUSTOM_DOMAIN !== "true"
+    ? `/${process.env.GITHUB_PAGES_REPO ?? "dienmattroisonha"}`
+    : "";
 
 export default function RootLayout({
   children,
