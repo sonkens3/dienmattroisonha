@@ -1,2 +1,2 @@
-:HL["/dienmattroisonha/_next/static/chunks/0ouqks8oda74~.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"1EnBChF0Dv3AtOjdi7nlu"}
+:HL["/_next/static/chunks/0ouqks8oda74~.css","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"z7bvVKS6VZ5wtmaPhE2lw"}
