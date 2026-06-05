@@ -1,16 +1,16 @@
 "use client";
 
-import { Database, Edit3, ImagePlus, KeyRound, PlusCircle, RefreshCw, Trash2, Video, X } from "lucide-react";
+import { Database, Edit3, ImagePlus, PlusCircle, RefreshCw, Trash2, Video, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { projects as seedProjects, type Project, type ProjectMedia } from "@/data/projects";
 import {
   createProjectId,
   createProjectMediaId,
+  DEFAULT_PROJECT_ADMIN_TOKEN,
   deleteRemoteProject,
   fetchRemoteProjects,
   loadProjectAdminToken,
   mergeProjectsWithRemote,
-  saveProjectAdminToken,
   saveRemoteProject,
   type ManagedProject,
   type ProjectUploadInput,
@@ -42,7 +42,7 @@ export function AdminProjectTable() {
   const formRef = useRef<HTMLFormElement | null>(null);
   const [remoteProjects, setRemoteProjects] = useState<ManagedProject[]>([]);
   const [editing, setEditing] = useState<EditingState>({ mode: "create" });
-  const [adminToken, setAdminToken] = useState(() => loadProjectAdminToken());
+  const [adminToken] = useState(() => loadProjectAdminToken());
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle", message: "" });
   const [loadState, setLoadState] = useState<LoadState>({
     status: "loading",
@@ -131,11 +131,6 @@ export function AdminProjectTable() {
     };
   }, []);
 
-  function handleTokenChange(value: string) {
-    setAdminToken(value);
-    saveProjectAdminToken(value);
-  }
-
   function startCreate() {
     setEditing({ mode: "create" });
     setSaveState({ status: "idle", message: "" });
@@ -166,7 +161,7 @@ export function AdminProjectTable() {
     if (!adminToken.trim()) {
       setSaveState({
         status: "error",
-        message: "Anh cần nhập mã đồng bộ PROJECT_ADMIN_TOKEN trước khi lưu dự án lên Google Sheet/Drive.",
+        message: `Apps Script chưa có mã quản trị mặc định. Hãy đặt Script Property PROJECT_ADMIN_TOKEN = ${DEFAULT_PROJECT_ADMIN_TOKEN}.`,
       });
       return;
     }
@@ -271,7 +266,7 @@ export function AdminProjectTable() {
     } catch (error) {
       setSaveState({
         status: "error",
-        message: error instanceof Error ? error.message : "Không lưu được công trình. Vui lòng thử lại.",
+        message: formatProjectError(error, "Không lưu được công trình. Vui lòng thử lại."),
       });
     }
   }
@@ -280,7 +275,7 @@ export function AdminProjectTable() {
     if (!adminToken.trim()) {
       setSaveState({
         status: "error",
-        message: "Anh cần nhập mã đồng bộ PROJECT_ADMIN_TOKEN trước khi xóa dự án.",
+        message: `Apps Script chưa có mã quản trị mặc định. Hãy đặt Script Property PROJECT_ADMIN_TOKEN = ${DEFAULT_PROJECT_ADMIN_TOKEN}.`,
       });
       return;
     }
@@ -296,7 +291,7 @@ export function AdminProjectTable() {
     } catch (error) {
       setSaveState({
         status: "error",
-        message: error instanceof Error ? error.message : "Không xóa được dự án. Vui lòng thử lại.",
+        message: formatProjectError(error, "Không xóa được dự án. Vui lòng thử lại."),
       });
     }
   }
@@ -307,41 +302,26 @@ export function AdminProjectTable() {
 
   return (
     <section className="grid gap-6">
-      <div className="rounded-lg border border-teal-200 bg-teal-50 p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-teal-800">
-              <Database size={14} aria-hidden />
-              Google Sheet / Drive
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-teal-50 text-teal-700">
+              <Database size={16} aria-hidden />
             </div>
-            <h2 className="mt-3 text-xl font-bold text-slate-950">Đồng bộ dự án cho mọi thiết bị</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-700">
-              Dự án sẽ lưu text ở Google Sheet, ảnh/video ở Google Drive. Khách mở web bằng điện thoại hoặc máy mới đều xem cùng dữ liệu.
-            </p>
-            <p className="mt-2 text-sm font-semibold text-slate-700">{loadState.message}</p>
+            <div>
+              <p className="text-sm font-black text-slate-950">Dữ liệu dự án dùng chung cho mọi thiết bị</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{loadState.message}</p>
+            </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-[minmax(220px,320px)_auto]">
-            <label className="grid gap-1">
-              <span className="text-xs font-black uppercase tracking-wide text-slate-600">Mã đồng bộ admin</span>
-              <span className="relative">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} aria-hidden />
-                <input
-                  type="password"
-                  className="field pl-9"
-                  placeholder="PROJECT_ADMIN_TOKEN"
-                  value={adminToken}
-                  onChange={(event) => handleTokenChange(event.target.value)}
-                />
-              </span>
-            </label>
+          <div>
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-teal-700 bg-white px-4 py-3 text-sm font-bold text-teal-800 hover:bg-teal-700 hover:text-white"
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-teal-700 hover:text-teal-800"
               onClick={() => void refreshRemoteProjects(true)}
             >
               <RefreshCw size={16} aria-hidden />
-              Tải lại
+              Tải lại dữ liệu
             </button>
           </div>
         </div>
@@ -761,4 +741,14 @@ function splitLines(value: string) {
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
+}
+
+function formatProjectError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (message.includes("PROJECT_ADMIN_TOKEN") || message.includes("Mã đồng bộ admin")) {
+    return `Apps Script chưa khớp mã quản trị. Trong Script Properties đặt PROJECT_ADMIN_TOKEN = ${DEFAULT_PROJECT_ADMIN_TOKEN}, rồi deploy New version.`;
+  }
+
+  return message || fallback;
 }

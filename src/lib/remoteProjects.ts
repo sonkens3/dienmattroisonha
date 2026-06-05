@@ -3,7 +3,8 @@ import type { Project, ProjectMedia } from "@/data/projects";
 const DEFAULT_PROJECTS_API_URL =
   "https://script.google.com/macros/s/AKfycbzTXqxrjxvuB8DUe-nj4E2DxqH4zOvIu2ZPh-fUOFT-XN4NyZX5QIwimPGnu0gEbUY/exec";
 const PROJECTS_CACHE_KEY = "son-ha-remote-projects-cache";
-export const PROJECT_ADMIN_TOKEN_KEY = "son-ha-project-admin-token";
+export const DEFAULT_PROJECT_ADMIN_TOKEN =
+  process.env.NEXT_PUBLIC_PROJECT_ADMIN_TOKEN?.trim() || "SonHaSync_2026";
 
 const MAX_PROJECT_FILE_SIZE = 12 * 1024 * 1024;
 const MAX_PROJECT_UPLOAD_BYTES = 22 * 1024 * 1024;
@@ -47,19 +48,7 @@ export function getProjectsApiUrl() {
 }
 
 export function loadProjectAdminToken() {
-  if (typeof window === "undefined") return "";
-  return localStorage.getItem(PROJECT_ADMIN_TOKEN_KEY) ?? "";
-}
-
-export function saveProjectAdminToken(token: string) {
-  if (typeof window === "undefined") return;
-
-  if (token.trim()) {
-    localStorage.setItem(PROJECT_ADMIN_TOKEN_KEY, token.trim());
-    return;
-  }
-
-  localStorage.removeItem(PROJECT_ADMIN_TOKEN_KEY);
+  return DEFAULT_PROJECT_ADMIN_TOKEN;
 }
 
 export function createProjectId(title: string) {
