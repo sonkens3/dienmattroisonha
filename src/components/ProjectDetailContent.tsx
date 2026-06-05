@@ -3,11 +3,15 @@
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
+  Maximize2,
   MessageCircle,
   PlayCircle,
   ShieldCheck,
   Wrench,
+  X,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -32,9 +36,11 @@ export function ProjectDetailContent({ initialProject }: { initialProject: Proje
   const [project, setProject] = useState<Project>(initialProject);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const gallery = useMemo(() => buildGallery(project), [project]);
   const activeMedia =
     gallery[Math.min(selectedMediaIndex, gallery.length - 1)] ?? createCoverMedia(project);
+  const lightboxMedia = lightboxIndex === null ? null : gallery[lightboxIndex] ?? null;
 
   useEffect(() => {
     let mounted = true;
@@ -63,6 +69,39 @@ export function ProjectDetailContent({ initialProject }: { initialProject: Proje
       window.removeEventListener("sonha-remote-projects-updated", handleProjectsUpdated);
     };
   }, [initialProject.id]);
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLightboxIndex(null);
+      if (event.key === "ArrowRight") {
+        setLightboxIndex((current) => (current === null ? current : (current + 1) % gallery.length));
+      }
+      if (event.key === "ArrowLeft") {
+        setLightboxIndex((current) => (current === null ? current : (current - 1 + gallery.length) % gallery.length));
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [gallery.length, lightboxIndex]);
+
+  function moveLightbox(direction: "left" | "right") {
+    if (!gallery.length) return;
+
+    setLightboxIndex((current) => {
+      if (current === null) return current;
+      if (direction === "right") return (current + 1) % gallery.length;
+      return (current - 1 + gallery.length) % gallery.length;
+    });
+  }
 
   return (
     <>
@@ -97,7 +136,13 @@ export function ProjectDetailContent({ initialProject }: { initialProject: Proje
             </div>
 
             <div className="overflow-hidden rounded-lg border border-white/10 bg-white/5 shadow-2xl">
-              <MediaFrame media={activeMedia} fallbackImage={project.image} title={project.title} priority />
+              <MediaFrame
+                media={activeMedia}
+                fallbackImage={project.image}
+                title={project.title}
+                priority
+                onOpen={() => setLightboxIndex(Math.max(0, selectedMediaIndex))}
+              />
             </div>
           </div>
         </div>
@@ -135,6 +180,7 @@ export function ProjectDetailContent({ initialProject }: { initialProject: Proje
                 onSelect={setSelectedMediaIndex}
                 fallbackImage={project.image}
                 title={project.title}
+                onOpen={setLightboxIndex}
               />
             ) : null}
             {activeTab === "technical" ? <TechnicalTab project={project} /> : null}
@@ -160,6 +206,18 @@ export function ProjectDetailContent({ initialProject }: { initialProject: Proje
           </aside>
         </div>
       </section>
+
+      {lightboxMedia ? (
+        <MediaLightbox
+          media={lightboxMedia}
+          fallbackImage={project.image}
+          title={project.title}
+          currentIndex={lightboxIndex ?? 0}
+          total={gallery.length}
+          onClose={() => setLightboxIndex(null)}
+          onMove={moveLightbox}
+        />
+      ) : null}
     </>
   );
 }
@@ -207,12 +265,14 @@ function MediaTab({
   onSelect,
   fallbackImage,
   title,
+  onOpen,
 }: {
   gallery: ProjectMedia[];
   selectedIndex: number;
   onSelect: (index: number) => void;
   fallbackImage: string;
   title: string;
+  onOpen: (index: number) => void;
 }) {
   const activeMedia = gallery[selectedIndex] ?? gallery[0];
   const currentMedia =
@@ -230,7 +290,13 @@ function MediaTab({
       <SectionTitle eyebrow="Tư liệu thực tế" title="Ảnh và video công trình" />
       <div className="mt-6 grid gap-5">
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950">
-          <MediaFrame media={currentMedia} fallbackImage={fallbackImage} title={title} priority />
+          <MediaFrame
+            media={currentMedia}
+            fallbackImage={fallbackImage}
+            title={title}
+            priority
+            onOpen={() => onOpen(Math.max(0, selectedIndex))}
+          />
         </div>
 
         <div>
@@ -420,24 +486,29 @@ function MediaFrame({
   fallbackImage,
   title,
   priority = false,
+  onOpen,
 }: {
   media: ProjectMedia;
   fallbackImage: string;
   title: string;
   priority?: boolean;
+  onOpen?: () => void;
 }) {
   const mediaUrl = media.url || fallbackImage;
 
   if (media.type === "video" && isPlayableVideoUrl(mediaUrl)) {
     return (
-      <video
-        className="aspect-[16/10] w-full bg-slate-950 object-cover"
-        src={mediaUrl}
-        poster={fallbackImage}
-        controls
-        playsInline
-        preload={priority ? "metadata" : "none"}
-      />
+      <div className="relative">
+        <video
+          className="aspect-[16/10] w-full bg-slate-950 object-contain"
+          src={mediaUrl}
+          poster={fallbackImage}
+          controls
+          playsInline
+          preload={priority ? "metadata" : "none"}
+        />
+        {onOpen ? <ExpandMediaButton onOpen={onOpen} /> : null}
+      </div>
     );
   }
 
@@ -466,12 +537,144 @@ function MediaFrame({
   }
 
   return (
-    <div
-      className="aspect-[16/10] w-full bg-cover bg-center"
-      style={{ backgroundImage: `url("${mediaUrl}")` }}
-      role="img"
-      aria-label={media.caption || title}
-    />
+    <button type="button" className="group relative block aspect-[16/10] w-full bg-slate-950" onClick={onOpen}>
+      <span
+        className="absolute inset-0 bg-contain bg-center bg-no-repeat"
+        style={{ backgroundImage: `url("${mediaUrl}")` }}
+        role="img"
+        aria-label={media.caption || title}
+      />
+      {onOpen ? (
+        <span className="absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-full bg-slate-950/80 px-3 py-2 text-xs font-bold text-white opacity-95 shadow-lg transition group-hover:bg-teal-700">
+          <Maximize2 size={15} aria-hidden />
+          Xem đầy đủ
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function ExpandMediaButton({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      className="absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-full bg-slate-950/80 px-3 py-2 text-xs font-bold text-white shadow-lg transition hover:bg-teal-700"
+      onClick={onOpen}
+    >
+      <Maximize2 size={15} aria-hidden />
+      Xem đầy đủ
+    </button>
+  );
+}
+
+function MediaLightbox({
+  media,
+  fallbackImage,
+  title,
+  currentIndex,
+  total,
+  onClose,
+  onMove,
+}: {
+  media: ProjectMedia;
+  fallbackImage: string;
+  title: string;
+  currentIndex: number;
+  total: number;
+  onClose: () => void;
+  onMove: (direction: "left" | "right") => void;
+}) {
+  const mediaUrl = media.url || fallbackImage;
+  const canPlayVideo = media.type === "video" && isPlayableVideoUrl(mediaUrl);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/95 text-white">
+      <div className="flex h-full flex-col">
+        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-6">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wide text-teal-200">
+              {currentIndex + 1}/{total} {media.type === "video" ? "Video" : "Ảnh"} công trình
+            </p>
+            <h2 className="mt-1 truncate text-base font-bold sm:text-lg">{media.caption || title}</h2>
+          </div>
+          <button
+            type="button"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+            aria-label="Đóng ảnh"
+            onClick={onClose}
+          >
+            <X size={22} aria-hidden />
+          </button>
+        </div>
+
+        <div className="relative min-h-0 flex-1 px-3 py-4 sm:px-16 sm:py-6">
+          {total > 1 ? (
+            <>
+              <button
+                type="button"
+                className="absolute left-3 top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white shadow-lg hover:bg-teal-700 sm:left-5"
+                aria-label="Xem ảnh trước"
+                onClick={() => onMove("left")}
+              >
+                <ChevronLeft size={26} aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white shadow-lg hover:bg-teal-700 sm:right-5"
+                aria-label="Xem ảnh tiếp theo"
+                onClick={() => onMove("right")}
+              >
+                <ChevronRight size={26} aria-hidden />
+              </button>
+            </>
+          ) : null}
+
+          <div className="flex h-full items-center justify-center">
+            {canPlayVideo ? (
+              <video
+                className="max-h-full max-w-full rounded-lg bg-black shadow-2xl"
+                src={mediaUrl}
+                poster={fallbackImage}
+                controls
+                autoPlay
+                playsInline
+              />
+            ) : media.type === "video" ? (
+              <div
+                className="flex min-h-[360px] w-full max-w-5xl items-center justify-center rounded-lg bg-cover bg-center p-8 text-center shadow-2xl"
+                style={{ backgroundImage: `linear-gradient(rgb(2 6 23 / 78%), rgb(2 6 23 / 78%)), url("${fallbackImage}")` }}
+              >
+                <div>
+                  <PlayCircle className="mx-auto" size={54} aria-hidden />
+                  <p className="mt-4 text-lg font-bold">{media.caption || title}</p>
+                  <a
+                    href={mediaUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-5 inline-flex rounded-md bg-white px-5 py-3 text-sm font-bold text-slate-950 hover:bg-amber-200"
+                  >
+                    Mở video
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="h-full max-h-full w-full max-w-6xl rounded-lg bg-contain bg-center bg-no-repeat shadow-2xl"
+                style={{ backgroundImage: `url("${mediaUrl}")` }}
+                role="img"
+                aria-label={media.caption || title}
+              />
+            )}
+          </div>
+        </div>
+
+        {media.description ? (
+          <div className="border-t border-white/10 px-4 py-3 text-sm leading-6 text-slate-200 sm:px-6">
+            {media.description}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
