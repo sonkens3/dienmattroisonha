@@ -74,6 +74,20 @@ function testTelegramAuthorization() {
   });
 }
 
+function authorizeProjectDrive() {
+  const folder = getProjectMediaFolder();
+  const testFile = folder.createFile(
+    "son-ha-solar-drive-auth-test.txt",
+    "Nếu thấy file này trong thùng rác thì Apps Script đã được cấp quyền ghi Drive.",
+    MimeType.PLAIN_TEXT
+  );
+
+  testFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  testFile.setTrashed(true);
+
+  return "Đã cấp quyền ghi Google Drive cho Apps Script.";
+}
+
 function handleLead(payload) {
   const webhookSecret = getScriptProperty("GOOGLE_SHEET_WEBHOOK_SECRET");
 
@@ -181,9 +195,7 @@ function uploadProjectFiles(project, files) {
     const contentType = String(file.type || "application/octet-stream");
     const bytes = Utilities.base64Decode(String(file.dataBase64));
     const blob = Utilities.newBlob(bytes, contentType, String(file.name || "project-file"));
-    const driveFile = folder.createFile(blob);
-
-    driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const driveFile = createProjectDriveFile(folder, blob);
 
     const fileInfo = buildDriveFileInfo(driveFile, contentType);
 
@@ -205,6 +217,19 @@ function uploadProjectFiles(project, files) {
       media.viewUrl = fileInfo.viewUrl;
     }
   });
+}
+
+function createProjectDriveFile(folder, blob) {
+  try {
+    const driveFile = folder.createFile(blob);
+    driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return driveFile;
+  } catch (error) {
+    throw new Error(
+      "Apps Script chưa được cấp quyền ghi Google Drive. Trong Apps Script hãy chọn hàm authorizeProjectDrive, bấm Run, cấp quyền Drive, sau đó Deploy > New version. Chi tiết: " +
+        errorToMessage(error)
+    );
+  }
 }
 
 function findOrCreateProjectMedia(project, targetId, contentType, fileName) {

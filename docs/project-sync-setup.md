@@ -40,7 +40,9 @@ Thì ID cần điền là:
 
 ## Deploy Lại
 
-Trước khi deploy, chọn hàm `getProjectMediaFolder` rồi bấm `Run` một lần để Google hiện màn hình cấp quyền Drive. Chọn đúng tài khoản, bấm `Allow`.
+Trước khi deploy, chọn hàm `authorizeProjectDrive` rồi bấm `Run` một lần để Google hiện màn hình cấp quyền ghi Drive. Chọn đúng tài khoản, bấm `Allow`.
+
+Hàm này sẽ tạo thử một file nhỏ trong folder Drive rồi đưa vào thùng rác. Mục đích là bắt Google cấp đúng quyền `https://www.googleapis.com/auth/drive`, nếu chỉ chạy hàm đọc folder thì khi upload ảnh vẫn có thể lỗi `Folder.createFile`.
 
 1. Bấm `Deploy` > `Manage deployments`.
 2. Chọn deployment web app đang dùng.
