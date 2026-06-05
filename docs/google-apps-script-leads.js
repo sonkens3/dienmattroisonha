@@ -2,7 +2,6 @@
 
 const LEADS_SHEET_NAME = "Leads";
 const PROJECTS_SHEET_NAME = "Projects";
-const PROJECT_MEDIA_FOLDER_NAME = "Son Ha Solar Project Media";
 const DEFAULT_NOTIFY_NAME = "Điện mặt trời Sơn Hà";
 const MAX_TELEGRAM_FILE_SIZE = 8 * 1024 * 1024;
 const MAX_PROJECT_FILE_SIZE = 12 * 1024 * 1024;
@@ -246,14 +245,11 @@ function buildDriveFileInfo(file, contentType) {
 function getProjectMediaFolder() {
   const configuredFolderId = getScriptProperty("PROJECT_MEDIA_FOLDER_ID");
 
-  if (configuredFolderId) {
-    return DriveApp.getFolderById(configuredFolderId);
+  if (!configuredFolderId) {
+    throw new Error("Chưa cấu hình PROJECT_MEDIA_FOLDER_ID trong Script Properties. Hãy tạo folder Google Drive để lưu ảnh/video công trình, copy ID folder rồi thêm vào Script Properties.");
   }
 
-  const folders = DriveApp.getFoldersByName(PROJECT_MEDIA_FOLDER_NAME);
-  if (folders.hasNext()) return folders.next();
-
-  return DriveApp.createFolder(PROJECT_MEDIA_FOLDER_NAME);
+  return DriveApp.getFolderById(configuredFolderId);
 }
 
 function getProjectSheet() {

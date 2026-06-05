@@ -12,18 +12,35 @@ Web chạy GitHub Pages nên không có server riêng để lưu ảnh/video. Ph
 2. Vào `Extensions` > `Apps Script`.
 3. Xóa code cũ trong `Code.gs`.
 4. Dán toàn bộ nội dung file `docs/google-apps-script-leads.js`.
-5. Vào `Project Settings` > `Script Properties`, thêm:
+5. Vào `Project Settings`, bật `Show "appsscript.json" manifest file`.
+6. Mở file `appsscript.json`, dán nội dung file `docs/appsscript.json`.
+7. Vào `Project Settings` > `Script Properties`, thêm:
 
 ```text
 TELEGRAM_BOT_TOKEN = token bot Telegram
 TELEGRAM_CHAT_ID = chat ID nhận lead
 LEAD_NOTIFY_FROM_NAME = Điện mặt trời Sơn Hà
 PROJECT_ADMIN_TOKEN = SonHaSync_2026
+PROJECT_MEDIA_FOLDER_ID = ID folder Google Drive dùng để lưu ảnh/video công trình
 ```
 
-`PROJECT_MEDIA_FOLDER_ID` là tùy chọn. Nếu không thêm, script sẽ tự tạo folder `Son Ha Solar Project Media` trong Google Drive.
+Để lấy `PROJECT_MEDIA_FOLDER_ID`: tạo một folder trong Google Drive, ví dụ `Son Ha Solar Project Media`, mở folder đó rồi copy phần ID trên URL.
+
+Ví dụ URL folder:
+
+```text
+https://drive.google.com/drive/folders/1AbCDEFgHiJkLmNoPqRsTuvWxYz
+```
+
+Thì ID cần điền là:
+
+```text
+1AbCDEFgHiJkLmNoPqRsTuvWxYz
+```
 
 ## Deploy Lại
+
+Trước khi deploy, chọn hàm `getProjectMediaFolder` rồi bấm `Run` một lần để Google hiện màn hình cấp quyền Drive. Chọn đúng tài khoản, bấm `Allow`.
 
 1. Bấm `Deploy` > `Manage deployments`.
 2. Chọn deployment web app đang dùng.
