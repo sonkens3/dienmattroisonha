@@ -51,6 +51,10 @@ export function loadProjectAdminToken() {
   return DEFAULT_PROJECT_ADMIN_TOKEN;
 }
 
+export function loadCachedRemoteProjects() {
+  return loadProjectsCache();
+}
+
 export function createProjectId(title: string) {
   const slug =
     title

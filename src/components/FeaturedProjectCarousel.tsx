@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { projects as seedProjects, type Project } from "@/data/projects";
 import { isPlayableVideoUrl } from "@/lib/media";
 import { getProjectHref } from "@/lib/projectLinks";
-import { fetchRemoteProjects, mergeProjectsWithRemote } from "@/lib/remoteProjects";
+import { fetchRemoteProjects, loadCachedRemoteProjects, mergeProjectsWithRemote } from "@/lib/remoteProjects";
 
 type DisplayProject = Project & {
   isRemote?: boolean;
@@ -15,14 +15,32 @@ type DisplayProject = Project & {
 export function FeaturedProjectCarousel() {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [remoteProjects, setRemoteProjects] = useState<Project[]>([]);
+  const [remoteState, setRemoteState] = useState<{ projects: Project[]; loaded: boolean }>({
+    projects: [],
+    loaded: false,
+  });
 
   useEffect(() => {
     let mounted = true;
 
     async function loadProjects() {
+      await Promise.resolve();
+
+      const cachedProjects = loadCachedRemoteProjects();
+      if (mounted && cachedProjects.length) {
+        setRemoteState({
+          projects: cachedProjects,
+          loaded: true,
+        });
+      }
+
       const result = await fetchRemoteProjects({ useCache: true });
-      if (mounted) setRemoteProjects(result.projects);
+      if (mounted) {
+        setRemoteState({
+          projects: result.projects,
+          loaded: true,
+        });
+      }
     }
 
     void loadProjects();
@@ -35,10 +53,10 @@ export function FeaturedProjectCarousel() {
   }, []);
 
   const featuredProjects = useMemo<DisplayProject[]>(() => {
-    return mergeProjectsWithRemote(seedProjects, remoteProjects)
-      .map((project) => ({ ...project, isRemote: remoteProjects.some((item) => item.id === project.id) }))
+    return mergeProjectsWithRemote(seedProjects, remoteState.projects)
+      .map((project) => ({ ...project, isRemote: remoteState.projects.some((item) => item.id === project.id) }))
       .slice(0, 10);
-  }, [remoteProjects]);
+  }, [remoteState.projects]);
 
   const scrollToIndex = useCallback((index: number) => {
     const scroller = scrollerRef.current;
@@ -100,6 +118,9 @@ export function FeaturedProjectCarousel() {
           </Link>
         </div>
 
+        {!remoteState.loaded ? (
+          <ProjectCarouselSkeleton />
+        ) : (
         <div className="relative mt-8">
           <button
             type="button"
@@ -204,6 +225,7 @@ export function FeaturedProjectCarousel() {
             ))}
           </div>
         </div>
+        )}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 md:hidden">
           <Link
@@ -221,6 +243,26 @@ export function FeaturedProjectCarousel() {
         </div>
       </div>
     </section>
+  );
+}
+
+function ProjectCarouselSkeleton() {
+  return (
+    <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Đang tải công trình thực tế">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="aspect-[16/10] animate-pulse bg-slate-200" />
+          <div className="p-4">
+            <div className="h-4 w-1/2 animate-pulse rounded bg-slate-200" />
+            <div className="mt-3 h-6 w-5/6 animate-pulse rounded bg-slate-200" />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="h-14 animate-pulse rounded-md bg-slate-100" />
+              <div className="h-14 animate-pulse rounded-md bg-slate-100" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
