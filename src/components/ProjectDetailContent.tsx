@@ -25,8 +25,8 @@ import { fetchRemoteProjects, mergeProjectsWithRemote, type ManagedProject } fro
 type TabId = "overview" | "media" | "technical" | "process" | "lead";
 
 const tabs: { id: TabId; label: string }[] = [
-  { id: "overview", label: "Tổng quan" },
   { id: "media", label: "Hình ảnh & video" },
+  { id: "overview", label: "Tổng quan" },
   { id: "technical", label: "Thông số" },
   { id: "process", label: "Thi công" },
   { id: "lead", label: "Tư vấn" },
@@ -34,7 +34,7 @@ const tabs: { id: TabId; label: string }[] = [
 
 export function ProjectDetailContent({ initialProject }: { initialProject: Project }) {
   const [project, setProject] = useState<Project>(initialProject);
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [activeTab, setActiveTab] = useState<TabId>("media");
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const gallery = useMemo(() => buildGallery(project), [project]);
