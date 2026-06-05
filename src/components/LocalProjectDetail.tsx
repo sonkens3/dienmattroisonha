@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ProjectDetailContent } from "@/components/ProjectDetailContent";
 import type { Project } from "@/data/projects";
-import { loadLocalProjects, resolveLocalProjectMedia } from "@/lib/localProjects";
+import { fetchRemoteProjects } from "@/lib/remoteProjects";
 
 export function LocalProjectDetail({ slug }: { slug: string }) {
   const [project, setProject] = useState<Project | null>(null);
@@ -15,17 +15,11 @@ export function LocalProjectDetail({ slug }: { slug: string }) {
     let mounted = true;
 
     async function loadProject() {
-      await Promise.resolve();
-      const localProject = loadLocalProjects().find((item) => item.id === slug);
+      const result = await fetchRemoteProjects({ useCache: true });
+      const remoteProject = result.projects.find((item) => item.id === slug);
 
-      if (!localProject) {
-        if (mounted) setLoaded(true);
-        return;
-      }
-
-      const resolved = await resolveLocalProjectMedia(localProject);
       if (mounted) {
-        setProject(resolved);
+        setProject(remoteProject ?? null);
         setLoaded(true);
       }
     }
@@ -56,7 +50,7 @@ export function LocalProjectDetail({ slug }: { slug: string }) {
           <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-8">
             <h1 className="text-2xl font-bold text-slate-950">Không tìm thấy công trình</h1>
             <p className="mt-2 text-slate-600">
-              Công trình này có thể đã bị xóa trong admin mock hoặc được tạo trên trình duyệt khác.
+              Công trình này chưa có trên Google Sheet hoặc đã bị xóa trong trang admin.
             </p>
           </div>
         </div>

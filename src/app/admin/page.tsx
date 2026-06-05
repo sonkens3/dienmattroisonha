@@ -5,8 +5,8 @@ import { AdminProjectTable } from "@/components/AdminProjectTable";
 import { SectionHeading } from "@/components/SectionHeading";
 
 export const metadata: Metadata = {
-  title: "Admin mock | Website điện mặt trời",
-  description: "Trang admin mock để xem lead localStorage và dữ liệu dự án mẫu.",
+  title: "Admin | Website điện mặt trời Sơn Hà",
+  description: "Trang quản trị lead và dự án thực tế của website Điện mặt trời Sơn Hà.",
 };
 
 export default function AdminPage() {
@@ -15,9 +15,9 @@ export default function AdminPage() {
       <div className="section-shell">
         <AdminAuthGate>
           <SectionHeading
-            eyebrow="Admin mock"
-            title="Quản lý demo lead và dự án"
-            description="Bản MVP chưa dùng database. Lead được lưu trong trình duyệt để kiểm tra luồng form; dự án nằm trong file dữ liệu."
+            eyebrow="Quản trị website"
+            title="Quản lý lead và dự án thực tế"
+            description="Lead dùng để kiểm tra nhanh trong trình duyệt; dự án thực tế được đồng bộ qua Google Sheet và Google Drive để thiết bị khác đều xem được."
           />
           <div className="mt-8 grid gap-6">
             <AdminLeadTable />

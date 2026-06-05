@@ -37,6 +37,7 @@ jobs:
           GITHUB_PAGES_CUSTOM_DOMAIN: "true"
           GITHUB_PAGES_REPO: dienmattroisonha
           NEXT_PUBLIC_LEAD_WEBHOOK_URL: "https://script.google.com/macros/s/AKfycbzTXqxrjxvuB8DUe-nj4E2DxqH4zOvIu2ZPh-fUOFT-XN4NyZX5QIwimPGnu0gEbUY/exec"
+          NEXT_PUBLIC_PROJECTS_API_URL: "https://script.google.com/macros/s/AKfycbzTXqxrjxvuB8DUe-nj4E2DxqH4zOvIu2ZPh-fUOFT-XN4NyZX5QIwimPGnu0gEbUY/exec"
 
       - name: Add GitHub Pages marker
         run: touch out/.nojekyll

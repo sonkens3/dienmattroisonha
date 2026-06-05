@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ProjectCard } from "@/components/ProjectCard";
 import type { Project } from "@/data/projects";
-import { loadResolvedLocalProjects, mergeProjectsWithLocal } from "@/lib/localProjects";
+import { fetchRemoteProjects, mergeProjectsWithRemote } from "@/lib/remoteProjects";
 
 const filters = ["Tất cả", "Nhà dân", "Nhà nghỉ", "Quán cafe", "Xưởng", "Văn phòng", "Có lưu trữ", "Không lưu trữ"];
 
@@ -15,32 +15,32 @@ export function ProjectGrid({
   filterable?: boolean;
 }) {
   const [activeFilter, setActiveFilter] = useState("Tất cả");
-  const [localProjects, setLocalProjects] = useState<Project[]>([]);
+  const [remoteProjects, setRemoteProjects] = useState<Project[]>([]);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadProjects() {
-      const resolved = await loadResolvedLocalProjects();
-      if (mounted) setLocalProjects(resolved);
+      const result = await fetchRemoteProjects({ useCache: true });
+      if (mounted) setRemoteProjects(result.projects);
     }
 
     void loadProjects();
-    window.addEventListener("sonha-projects-updated", loadProjects);
+    window.addEventListener("sonha-remote-projects-updated", loadProjects);
 
     return () => {
       mounted = false;
-      window.removeEventListener("sonha-projects-updated", loadProjects);
+      window.removeEventListener("sonha-remote-projects-updated", loadProjects);
     };
   }, []);
 
   const visibleProjects = useMemo(() => {
-    const allProjects = mergeProjectsWithLocal(projects, localProjects);
+    const allProjects = mergeProjectsWithRemote(projects, remoteProjects);
     if (activeFilter === "Tất cả") return allProjects;
     if (activeFilter === "Có lưu trữ") return allProjects.filter((project) => project.hasStorage);
     if (activeFilter === "Không lưu trữ") return allProjects.filter((project) => !project.hasStorage);
     return allProjects.filter((project) => project.type === activeFilter);
-  }, [activeFilter, localProjects, projects]);
+  }, [activeFilter, remoteProjects, projects]);
 
   return (
     <div className="mt-8">

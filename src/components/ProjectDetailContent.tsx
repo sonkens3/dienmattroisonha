@@ -13,8 +13,10 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { LeadForm } from "@/components/LeadForm";
+import { projects as seedProjects } from "@/data/projects";
 import type { Project, ProjectMedia } from "@/data/projects";
-import { loadLocalProjects, resolveLocalProjectMedia } from "@/lib/localProjects";
+import { isPlayableVideoUrl } from "@/lib/media";
+import { fetchRemoteProjects, mergeProjectsWithRemote, type ManagedProject } from "@/lib/remoteProjects";
 
 type TabId = "overview" | "media" | "technical" | "process" | "lead";
 
@@ -38,14 +40,14 @@ export function ProjectDetailContent({ initialProject }: { initialProject: Proje
     let mounted = true;
 
     async function loadOverride() {
-      const localProject = loadLocalProjects().find(
-        (item) => item.id === initialProject.id || item.baseProjectId === initialProject.id,
-      );
+      const result = await fetchRemoteProjects({ useCache: true });
+      const mergedProjects = mergeProjectsWithRemote(seedProjects, result.projects);
+      const remoteProject = mergedProjects.find((item) => {
+        const managedProject = item as ManagedProject;
+        return item.id === initialProject.id || managedProject.baseProjectId === initialProject.id;
+      });
 
-      if (!localProject) return;
-
-      const resolved = await resolveLocalProjectMedia(localProject);
-      if (mounted) setProject(resolved);
+      if (mounted && remoteProject) setProject(remoteProject);
     }
 
     void loadOverride();
@@ -54,11 +56,11 @@ export function ProjectDetailContent({ initialProject }: { initialProject: Proje
       void loadOverride();
     };
 
-    window.addEventListener("sonha-projects-updated", handleProjectsUpdated);
+    window.addEventListener("sonha-remote-projects-updated", handleProjectsUpdated);
 
     return () => {
       mounted = false;
-      window.removeEventListener("sonha-projects-updated", handleProjectsUpdated);
+      window.removeEventListener("sonha-remote-projects-updated", handleProjectsUpdated);
     };
   }, [initialProject.id]);
 
@@ -501,8 +503,4 @@ function createCoverMedia(project: Project): ProjectMedia {
     caption: "Hình ảnh tổng quan công trình",
     description: project.summary,
   };
-}
-
-function isPlayableVideoUrl(url: string) {
-  return url.startsWith("blob:") || /\.(mp4|webm|ogg)(\?.*)?$/i.test(url);
 }

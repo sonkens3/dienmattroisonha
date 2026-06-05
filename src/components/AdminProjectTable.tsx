@@ -1,22 +1,28 @@
 "use client";
 
-import { Edit3, ImagePlus, PlusCircle, Trash2, Video, X } from "lucide-react";
+import { Database, Edit3, ImagePlus, KeyRound, PlusCircle, RefreshCw, Trash2, Video, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { projects as seedProjects, type Project, type ProjectMedia } from "@/data/projects";
 import {
-  createMediaKey,
   createProjectId,
-  deleteLocalProject,
-  deleteMediaFile,
-  loadLocalProjects,
-  mergeProjectsWithLocal,
-  saveMediaFile,
-  upsertLocalProject,
-  type LocalProject,
-} from "@/lib/localProjects";
+  createProjectMediaId,
+  deleteRemoteProject,
+  fetchRemoteProjects,
+  loadProjectAdminToken,
+  mergeProjectsWithRemote,
+  saveProjectAdminToken,
+  saveRemoteProject,
+  type ManagedProject,
+  type ProjectUploadInput,
+} from "@/lib/remoteProjects";
 
 type SaveState = {
   status: "idle" | "saving" | "saved" | "error";
+  message: string;
+};
+
+type LoadState = {
+  status: "idle" | "loading" | "loaded" | "error";
   message: string;
 };
 
@@ -25,7 +31,7 @@ type EditingState =
   | {
       mode: "edit";
       project: Project;
-      localProject?: LocalProject;
+      remoteProject?: ManagedProject;
       baseProjectId?: string;
     };
 
@@ -34,39 +40,101 @@ const defaultImage =
 
 export function AdminProjectTable() {
   const formRef = useRef<HTMLFormElement | null>(null);
-  const [localProjects, setLocalProjects] = useState<LocalProject[]>([]);
+  const [remoteProjects, setRemoteProjects] = useState<ManagedProject[]>([]);
   const [editing, setEditing] = useState<EditingState>({ mode: "create" });
+  const [adminToken, setAdminToken] = useState(() => loadProjectAdminToken());
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle", message: "" });
+  const [loadState, setLoadState] = useState<LoadState>({
+    status: "loading",
+    message: "Đang tải dữ liệu dự án từ Google Sheet...",
+  });
   const seedIds = useMemo(() => new Set(seedProjects.map((project) => project.id)), []);
 
-  const localOnlyProjects = useMemo(
-    () => localProjects.filter((project) => !project.baseProjectId),
-    [localProjects],
-  );
-  const mergedSeedProjects = useMemo(
-    () =>
-      mergeProjectsWithLocal(seedProjects, localProjects).filter((project) => {
-        const localProject = project as LocalProject;
-        return seedIds.has(project.id) || Boolean(localProject.baseProjectId);
-      }),
-    [localProjects, seedIds],
+  const addedProjects = useMemo(
+    () => remoteProjects.filter((project) => !project.baseProjectId && !seedIds.has(project.id)),
+    [remoteProjects, seedIds],
   );
 
-  function refreshLocalProjects() {
-    setLocalProjects(loadLocalProjects());
+  const managedSeedProjects = useMemo(
+    () =>
+      mergeProjectsWithRemote(seedProjects, remoteProjects).filter((project) => {
+        const remoteProject = project as ManagedProject;
+        return seedIds.has(project.id) || Boolean(remoteProject.baseProjectId && seedIds.has(remoteProject.baseProjectId));
+      }),
+    [remoteProjects, seedIds],
+  );
+
+  async function refreshRemoteProjects(showLoading = false) {
+    if (showLoading) {
+      setLoadState({ status: "loading", message: "Đang tải dữ liệu dự án từ Google Sheet..." });
+    }
+
+    const result = await fetchRemoteProjects({ useCache: true });
+    setRemoteProjects(result.projects);
+
+    if (result.error) {
+      setLoadState({
+        status: result.fromCache ? "loaded" : "error",
+        message: result.fromCache
+          ? `Đang dùng dữ liệu cache vì chưa tải được Google Sheet: ${result.error}`
+          : `Chưa tải được dữ liệu Google Sheet: ${result.error}`,
+      });
+      return;
+    }
+
+    setLoadState({
+      status: "loaded",
+      message: result.projects.length
+        ? `Đã tải ${result.projects.length} bản ghi dự án từ Google Sheet.`
+        : "Chưa có dự án tùy chỉnh trên Google Sheet, web đang dùng dữ liệu mẫu trong code.",
+    });
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setLocalProjects(loadLocalProjects()), 0);
-    const handleProjectsUpdated = () => setLocalProjects(loadLocalProjects());
+    let mounted = true;
 
-    window.addEventListener("sonha-projects-updated", handleProjectsUpdated);
+    async function loadInitialProjects() {
+      const result = await fetchRemoteProjects({ useCache: true });
+      if (!mounted) return;
+
+      setRemoteProjects(result.projects);
+
+      if (result.error) {
+        setLoadState({
+          status: result.fromCache ? "loaded" : "error",
+          message: result.fromCache
+            ? `Đang dùng dữ liệu cache vì chưa tải được Google Sheet: ${result.error}`
+            : `Chưa tải được dữ liệu Google Sheet: ${result.error}`,
+        });
+        return;
+      }
+
+      setLoadState({
+        status: "loaded",
+        message: result.projects.length
+          ? `Đã tải ${result.projects.length} bản ghi dự án từ Google Sheet.`
+          : "Chưa có dự án tùy chỉnh trên Google Sheet, web đang dùng dữ liệu mẫu trong code.",
+      });
+    }
+
+    void loadInitialProjects();
+
+    const handleProjectsUpdated = () => {
+      void refreshRemoteProjects();
+    };
+
+    window.addEventListener("sonha-remote-projects-updated", handleProjectsUpdated);
 
     return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("sonha-projects-updated", handleProjectsUpdated);
+      mounted = false;
+      window.removeEventListener("sonha-remote-projects-updated", handleProjectsUpdated);
     };
   }, []);
+
+  function handleTokenChange(value: string) {
+    setAdminToken(value);
+    saveProjectAdminToken(value);
+  }
 
   function startCreate() {
     setEditing({ mode: "create" });
@@ -76,16 +144,16 @@ export function AdminProjectTable() {
   }
 
   function startEdit(project: Project) {
-    const projectAsLocal = project as LocalProject;
-    const seedId = seedIds.has(project.id) ? project.id : projectAsLocal.baseProjectId;
-    const localProject = localProjects.find(
-      (item) => item.id === project.id || item.baseProjectId === project.id || item.baseProjectId === seedId,
+    const projectAsRemote = project as ManagedProject;
+    const seedId = seedIds.has(project.id) ? project.id : projectAsRemote.baseProjectId;
+    const remoteProject = remoteProjects.find(
+      (item) => item.id === project.id || item.baseProjectId === project.id || (seedId ? item.baseProjectId === seedId || item.id === seedId : false),
     );
 
     setEditing({
       mode: "edit",
       project,
-      localProject,
+      remoteProject,
       baseProjectId: seedId,
     });
     setSaveState({ status: "idle", message: "" });
@@ -94,134 +162,142 @@ export function AdminProjectTable() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSaveState({ status: "saving", message: "Đang lưu công trình..." });
+
+    if (!adminToken.trim()) {
+      setSaveState({
+        status: "error",
+        message: "Anh cần nhập mã đồng bộ PROJECT_ADMIN_TOKEN trước khi lưu dự án lên Google Sheet/Drive.",
+      });
+      return;
+    }
+
+    setSaveState({ status: "saving", message: "Đang lưu công trình lên Google Sheet và Google Drive..." });
 
     const form = event.currentTarget;
     const formData = new FormData(form);
     const title = getValue(formData, "title");
-    const existingLocal = editing.mode === "edit" ? editing.localProject : undefined;
+    const existingRemote = editing.mode === "edit" ? editing.remoteProject : undefined;
     const baseProjectId = editing.mode === "edit" ? editing.baseProjectId : undefined;
-    const id =
-      editing.mode === "edit"
-        ? existingLocal?.id ?? editing.project.id
-        : createProjectId(title);
-    const imageFile = formData.get("image") as File | null;
-    const videoFile = formData.get("video") as File | null;
-    const imageMediaKey = imageFile?.size
-      ? createMediaKey(id, "image")
-      : existingLocal?.imageMediaKey;
-    const videoMediaKey = videoFile?.size
-      ? createMediaKey(id, "video")
-      : existingLocal?.videoMediaKey;
-    const existingGallery = editing.mode === "edit" ? existingLocal?.gallery ?? editing.project.gallery ?? [] : [];
+    const id = editing.mode === "edit" ? existingRemote?.id ?? editing.project.id : createProjectId(title);
+    const imageFile = getFile(formData, "image");
+    const videoFile = getFile(formData, "video");
+    const existingGallery = editing.mode === "edit" ? existingRemote?.gallery ?? editing.project.gallery ?? [] : [];
     const keptGallery = getKeptGallery(formData, existingGallery);
-    const removedGalleryMediaKeys = existingGallery
-      .filter((item) => !keptGallery.some((keptItem) => keptItem.id === item.id))
-      .map((item) => item.mediaKey)
-      .filter(Boolean) as string[];
     const galleryFiles = getFiles(formData, "galleryFiles");
     const galleryCaptions = splitLines(getValue(formData, "galleryCaptions"));
     const galleryDescriptions = splitLines(getValue(formData, "galleryDescriptions"));
+    const uploadedGallery = galleryFiles.map((file, index) => {
+      const type: ProjectMedia["type"] = file.type.startsWith("video") ? "video" : "image";
+      const mediaId = createProjectMediaId(id, type);
+
+      return {
+        media: {
+          id: mediaId,
+          type,
+          url: "",
+          caption: galleryCaptions[index] || file.name || "Ảnh/video thực tế công trình",
+          description:
+            galleryDescriptions[index] ||
+            "Tư liệu thực tế giúp khách xem rõ quá trình khảo sát, thi công và bàn giao.",
+        } satisfies ProjectMedia,
+        file,
+      };
+    });
+    const externalVideoUrl = getValue(formData, "externalVideoUrl");
     const now = new Date().toISOString();
 
+    const uploadFiles: ProjectUploadInput[] = [
+      imageFile ? { field: "image", file: imageFile } : null,
+      videoFile ? { field: "video", file: videoFile } : null,
+      ...uploadedGallery.map((item) => ({
+        field: "gallery" as const,
+        targetId: item.media.id,
+        file: item.file,
+      })),
+    ].filter((item): item is ProjectUploadInput => Boolean(item));
+
+    const project: ManagedProject = {
+      id,
+      source: "remote",
+      baseProjectId,
+      createdAt: existingRemote?.createdAt ?? now,
+      updatedAt: now,
+      title,
+      location: getValue(formData, "location") || "Chưa cập nhật",
+      type: getValue(formData, "type") || "Nhà dân",
+      monthlyBill: getValue(formData, "monthlyBill") || "Chưa cập nhật",
+      systemSize: getValue(formData, "systemSize") || "Chưa cập nhật",
+      panels: getValue(formData, "panels") || "Theo phương án",
+      inverter: getValue(formData, "inverter") || "Theo phương án",
+      estimatedOutput: getValue(formData, "estimatedOutput") || "Theo khảo sát",
+      payback: getValue(formData, "payback") || "Từ 3 năm",
+      cost: getValue(formData, "cost") || "Theo khảo sát",
+      hasStorage: formData.get("hasStorage") === "on",
+      image: existingRemote?.image ?? (editing.mode === "edit" ? editing.project.image : defaultImage),
+      video: externalVideoUrl || existingRemote?.video || (editing.mode === "edit" ? editing.project.video : undefined),
+      gallery: [...keptGallery, ...uploadedGallery.map((item) => item.media)],
+      summary:
+        getValue(formData, "summary") ||
+        "Công trình thực tế do Điện mặt trời Sơn Hà khảo sát, thiết kế và thi công.",
+      details: splitLines(getValue(formData, "details")),
+    };
+
+    if (!project.details.length) {
+      project.details = [
+        "Khảo sát mái, hướng nắng, bóng che và vị trí đi dây.",
+        "Tính công suất theo hóa đơn điện và nhu cầu sử dụng thực tế.",
+        "Bàn giao app theo dõi sản lượng sau khi vận hành.",
+      ];
+    }
+
     try {
-      if (imageMediaKey && imageFile?.size) await saveMediaFile(imageMediaKey, imageFile);
-      if (videoMediaKey && videoFile?.size) await saveMediaFile(videoMediaKey, videoFile);
+      const savedProject = await saveRemoteProject(project, {
+        adminToken,
+        files: uploadFiles,
+      });
 
-      const uploadedGallery = await Promise.all(
-        galleryFiles.map(async (file, index) => {
-          const type: ProjectMedia["type"] = file.type.startsWith("video") ? "video" : "image";
-          const mediaKey = createMediaKey(id, type);
-
-          await saveMediaFile(mediaKey, file);
-
-          return {
-            id: mediaKey,
-            type,
-            url: type === "image" ? defaultImage : "",
-            mediaKey,
-            caption: galleryCaptions[index] || file.name || "Ảnh/video thực tế công trình",
-            description:
-              galleryDescriptions[index] ||
-              "Tư liệu thực tế được lưu từ admin để khách xem rõ quá trình khảo sát, thi công và bàn giao.",
-          } satisfies ProjectMedia;
-        }),
-      );
-
-      const externalVideoUrl = getValue(formData, "externalVideoUrl");
-      const project: LocalProject = {
-        id,
-        source: "local",
-        baseProjectId,
-        createdAt: existingLocal?.createdAt ?? now,
-        updatedAt: now,
-        title,
-        location: getValue(formData, "location") || "Chưa cập nhật",
-        type: getValue(formData, "type") || "Nhà dân",
-        monthlyBill: getValue(formData, "monthlyBill") || "Chưa cập nhật",
-        systemSize: getValue(formData, "systemSize") || "Chưa cập nhật",
-        panels: getValue(formData, "panels") || "Chưa cập nhật",
-        inverter: getValue(formData, "inverter") || "Chưa cập nhật",
-        estimatedOutput: getValue(formData, "estimatedOutput") || "Chưa cập nhật",
-        payback: getValue(formData, "payback") || "Từ 3 năm",
-        cost: getValue(formData, "cost") || "Theo khảo sát",
-        hasStorage: formData.get("hasStorage") === "on",
-        image: existingLocal?.image ?? (editing.mode === "edit" ? editing.project.image : defaultImage),
-        imageMediaKey,
-        videoMediaKey,
-        externalVideoUrl,
-        video: externalVideoUrl || existingLocal?.video || (editing.mode === "edit" ? editing.project.video : undefined),
-        gallery: [...keptGallery, ...uploadedGallery],
-        summary:
-          getValue(formData, "summary") ||
-          "Công trình thực tế do Điện mặt trời Sơn Hà khảo sát, thiết kế và thi công.",
-        details: splitLines(getValue(formData, "details")),
-      };
-
-      if (!project.details.length) {
-        project.details = [
-          "Khảo sát mái, hướng nắng, bóng che và vị trí đi dây.",
-          "Tính công suất theo hóa đơn điện và nhu cầu sử dụng thực tế.",
-          "Bàn giao app theo dõi sản lượng sau khi vận hành.",
-        ];
-      }
-
-      upsertLocalProject(project);
-
-      const oldCoverKeys = [
-        imageFile?.size ? existingLocal?.imageMediaKey : undefined,
-        videoFile?.size ? existingLocal?.videoMediaKey : undefined,
-        ...removedGalleryMediaKeys,
-      ].filter(Boolean) as string[];
-      await Promise.all(oldCoverKeys.map((key) => deleteMediaFile(key)));
-
-      refreshLocalProjects();
-      setEditing({ mode: "edit", project, localProject: project, baseProjectId });
+      setRemoteProjects((current) => [savedProject, ...current.filter((item) => item.id !== savedProject.id)]);
+      setEditing({ mode: "edit", project: savedProject, remoteProject: savedProject, baseProjectId });
       setSaveState({
         status: "saved",
         message:
           editing.mode === "edit"
-            ? "Đã cập nhật công trình. Trang chủ, trang dự án và trang chi tiết sẽ dùng nội dung mới."
-            : "Đã thêm công trình. Dự án sẽ hiện ở carousel trang chủ và trang dự án.",
+            ? "Đã cập nhật công trình lên Google Sheet/Drive. Thiết bị khác tải lại web sẽ thấy nội dung mới."
+            : "Đã thêm công trình lên Google Sheet/Drive. Thiết bị khác tải lại web sẽ thấy dự án mới.",
       });
 
       if (editing.mode === "create") form.reset();
+      void refreshRemoteProjects();
     } catch (error) {
       setSaveState({
         status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Không lưu được công trình. Vui lòng thử lại.",
+        message: error instanceof Error ? error.message : "Không lưu được công trình. Vui lòng thử lại.",
       });
     }
   }
 
   async function handleDelete(id: string) {
-    await deleteLocalProject(id);
-    refreshLocalProjects();
-    if (editing.mode === "edit" && editing.localProject?.id === id) {
-      startCreate();
+    if (!adminToken.trim()) {
+      setSaveState({
+        status: "error",
+        message: "Anh cần nhập mã đồng bộ PROJECT_ADMIN_TOKEN trước khi xóa dự án.",
+      });
+      return;
+    }
+
+    if (!window.confirm("Xóa dự án này khỏi Google Sheet? Ảnh/video trên Google Drive sẽ không tự xóa.")) return;
+
+    try {
+      await deleteRemoteProject(id, adminToken);
+      setRemoteProjects((current) => current.filter((project) => project.id !== id));
+      setSaveState({ status: "saved", message: "Đã xóa dự án khỏi danh sách hiển thị trên Google Sheet." });
+      if (editing.mode === "edit" && editing.remoteProject?.id === id) startCreate();
+      void refreshRemoteProjects();
+    } catch (error) {
+      setSaveState({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không xóa được dự án. Vui lòng thử lại.",
+      });
     }
   }
 
@@ -231,6 +307,46 @@ export function AdminProjectTable() {
 
   return (
     <section className="grid gap-6">
+      <div className="rounded-lg border border-teal-200 bg-teal-50 p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-teal-800">
+              <Database size={14} aria-hidden />
+              Google Sheet / Drive
+            </div>
+            <h2 className="mt-3 text-xl font-bold text-slate-950">Đồng bộ dự án cho mọi thiết bị</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-700">
+              Dự án sẽ lưu text ở Google Sheet, ảnh/video ở Google Drive. Khách mở web bằng điện thoại hoặc máy mới đều xem cùng dữ liệu.
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-700">{loadState.message}</p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-[minmax(220px,320px)_auto]">
+            <label className="grid gap-1">
+              <span className="text-xs font-black uppercase tracking-wide text-slate-600">Mã đồng bộ admin</span>
+              <span className="relative">
+                <KeyRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} aria-hidden />
+                <input
+                  type="password"
+                  className="field pl-9"
+                  placeholder="PROJECT_ADMIN_TOKEN"
+                  value={adminToken}
+                  onChange={(event) => handleTokenChange(event.target.value)}
+                />
+              </span>
+            </label>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-teal-700 bg-white px-4 py-3 text-sm font-bold text-teal-800 hover:bg-teal-700 hover:text-white"
+              onClick={() => void refreshRemoteProjects(true)}
+            >
+              <RefreshCw size={16} aria-hidden />
+              Tải lại
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -238,8 +354,7 @@ export function AdminProjectTable() {
               {isEditing ? "Sửa công trình" : "Thêm công trình đã thi công"}
             </h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              Có thể sửa cả dự án mẫu. Ảnh/video gallery được lưu trong trình duyệt admin để hiển thị lên trang chủ,
-              trang dự án và trang chi tiết.
+              Có thể sửa cả dự án mẫu. Ảnh/video upload sẽ được Apps Script đưa lên Google Drive rồi trả link về web.
             </p>
           </div>
           <button
@@ -289,7 +404,7 @@ export function AdminProjectTable() {
               label="Link video ngoài"
               name="externalVideoUrl"
               placeholder="MP4/YouTube/Facebook nếu có"
-              defaultValue={(editingProject as LocalProject | undefined)?.externalVideoUrl ?? editingProject?.video}
+              defaultValue={editingProject?.video}
             />
             <label className="flex min-h-[46px] items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-700">
               <input type="checkbox" name="hasStorage" className="h-4 w-4" defaultChecked={editingProject?.hasStorage} key={editingProject?.id ?? "create-storage"} />
@@ -417,7 +532,7 @@ export function AdminProjectTable() {
 
           <button
             type="submit"
-            disabled={saveState.status === "saving"}
+            disabled={saveState.status === "saving" || loadState.status === "loading"}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-teal-700 px-5 py-3 font-bold text-white hover:bg-teal-800 disabled:bg-slate-400"
           >
             {isEditing ? <Edit3 size={18} aria-hidden /> : <ImagePlus size={18} aria-hidden />}
@@ -427,19 +542,19 @@ export function AdminProjectTable() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-950">Công trình admin đã thêm</h2>
+        <h2 className="text-xl font-bold text-slate-950">Công trình admin đã thêm trên Google Sheet</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Các công trình này sẽ hiển thị trước dữ liệu mẫu trên trang chủ.
+          Các công trình này sẽ hiển thị trước dữ liệu mẫu trên trang chủ và trang dự án.
         </p>
-        <ProjectTable projects={localOnlyProjects} onEdit={startEdit} onDelete={handleDelete} editable />
+        <ProjectTable projects={addedProjects} onEdit={startEdit} onDelete={handleDelete} editable />
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-xl font-bold text-slate-950">Dự án mẫu có sẵn</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Bấm sửa để tạo bản ghi đè cho dự án mẫu. Nội dung mẫu gốc trong code không bị mất.
+          Bấm sửa để tạo bản ghi ghi đè trên Google Sheet. Nội dung mẫu gốc trong code không bị mất.
         </p>
-        <ProjectTable projects={mergedSeedProjects} onEdit={startEdit} />
+        <ProjectTable projects={managedSeedProjects} onEdit={startEdit} />
       </div>
     </section>
   );
@@ -481,11 +596,7 @@ function ProjectTable({
                 <td className="px-3 py-3">{project.payback}</td>
                 <td className="px-3 py-3">
                   <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">
-                    {project.video || (project as LocalProject).videoMediaKey ? (
-                      <Video size={13} aria-hidden />
-                    ) : (
-                      <ImagePlus size={13} aria-hidden />
-                    )}
+                    {project.video ? <Video size={13} aria-hidden /> : <ImagePlus size={13} aria-hidden />}
                     {(project.gallery?.length ?? 0) || 1} mục
                   </span>
                 </td>
@@ -629,6 +740,11 @@ function getKeptGallery(formData: FormData, gallery: ProjectMedia[]) {
       caption: getValue(formData, `galleryCaption-${item.id}`) || item.caption,
       description: getValue(formData, `galleryDescription-${item.id}`) || item.description,
     }));
+}
+
+function getFile(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return value instanceof File && value.size > 0 ? value : null;
 }
 
 function getFiles(formData: FormData, key: string) {

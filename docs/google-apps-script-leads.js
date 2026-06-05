@@ -1,15 +1,64 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-const SHEET_NAME = "Leads";
-const WEBHOOK_SECRET = "";
+const LEADS_SHEET_NAME = "Leads";
+const PROJECTS_SHEET_NAME = "Projects";
+const PROJECT_MEDIA_FOLDER_NAME = "Son Ha Solar Project Media";
 const DEFAULT_NOTIFY_NAME = "Điện mặt trời Sơn Hà";
 const MAX_TELEGRAM_FILE_SIZE = 8 * 1024 * 1024;
+const MAX_PROJECT_FILE_SIZE = 12 * 1024 * 1024;
 
-function doGet() {
-  return jsonResponse({
-    ok: true,
-    service: "Son Ha Solar lead webhook",
-  });
+function doGet(e) {
+  try {
+    const action = getParam(e, "action");
+
+    if (action === "projects") {
+      return jsonResponse({
+        ok: true,
+        projects: listProjects(),
+      });
+    }
+
+    return jsonResponse({
+      ok: true,
+      service: "Son Ha Solar webhook",
+      actions: ["projects", "lead", "saveProject", "deleteProject"],
+    });
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      error: errorToMessage(error),
+    });
+  }
+}
+
+function doPost(e) {
+  try {
+    const payload = parsePayload(e);
+    const action = payload.action || (payload.lead ? "lead" : "");
+
+    if (action === "saveProject") {
+      requireProjectAdminToken(payload.adminToken);
+      return jsonResponse({
+        ok: true,
+        project: saveProject(payload.project || {}, payload.files || []),
+      });
+    }
+
+    if (action === "deleteProject") {
+      requireProjectAdminToken(payload.adminToken);
+      deleteProject(String(payload.id || ""));
+      return jsonResponse({
+        ok: true,
+      });
+    }
+
+    return handleLead(payload);
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      error: errorToMessage(error),
+    });
+  }
 }
 
 function testTelegramAuthorization() {
@@ -26,28 +75,286 @@ function testTelegramAuthorization() {
   });
 }
 
-function doPost(e) {
-  try {
-    const payload = JSON.parse((e.postData && e.postData.contents) || "{}");
+function handleLead(payload) {
+  const webhookSecret = getScriptProperty("GOOGLE_SHEET_WEBHOOK_SECRET");
 
-    if (WEBHOOK_SECRET && payload.secret !== WEBHOOK_SECRET) {
-      return jsonResponse({ ok: false, error: "Invalid secret" });
+  if (webhookSecret && payload.secret !== webhookSecret) {
+    return jsonResponse({ ok: false, error: "Invalid secret" });
+  }
+
+  const lead = normalizeLead(payload.lead || {});
+  const files = Array.isArray(payload.files) ? payload.files : [];
+  const sheetResult = appendLeadToSheet(lead, files);
+  const telegramResult = safeSendLeadToTelegram(lead, files);
+
+  return jsonResponse({
+    ok: sheetResult.status === "sent" || telegramResult.status === "sent",
+    results: [sheetResult, telegramResult],
+  });
+}
+
+function listProjects() {
+  const sheet = getProjectSheet();
+  const values = sheet.getDataRange().getValues();
+  const projects = [];
+
+  for (let index = 1; index < values.length; index += 1) {
+    const row = values[index];
+    const status = String(row[4] || "active");
+
+    if (status !== "active") continue;
+
+    try {
+      const project = JSON.parse(String(row[3] || "{}"));
+      const normalizedProject = normalizeProject(project);
+      if (normalizedProject.id) projects.push(normalizedProject);
+    } catch {
+      // Skip broken rows so one bad edit does not break the whole website.
+    }
+  }
+
+  projects.sort(function (a, b) {
+    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+  });
+
+  return projects;
+}
+
+function saveProject(input, files) {
+  const sheet = getProjectSheet();
+  const now = new Date().toISOString();
+  const project = normalizeProject(input);
+
+  if (!project.id || !project.title) {
+    throw new Error("Thiếu tên công trình hoặc mã dự án.");
+  }
+
+  project.updatedAt = now;
+  if (!project.createdAt) project.createdAt = now;
+
+  uploadProjectFiles(project, Array.isArray(files) ? files : []);
+
+  const existingRow = findProjectRow(sheet, project.id);
+  const row = [
+    project.id,
+    project.baseProjectId || "",
+    project.title,
+    JSON.stringify(project),
+    "active",
+    project.createdAt,
+    project.updatedAt,
+  ];
+
+  if (existingRow) {
+    sheet.getRange(existingRow, 1, 1, row.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+  }
+
+  return project;
+}
+
+function deleteProject(id) {
+  if (!id) throw new Error("Thiếu mã dự án cần xóa.");
+
+  const sheet = getProjectSheet();
+  const existingRow = findProjectRow(sheet, id);
+
+  if (!existingRow) return;
+
+  sheet.getRange(existingRow, 5).setValue("deleted");
+  sheet.getRange(existingRow, 7).setValue(new Date().toISOString());
+}
+
+function uploadProjectFiles(project, files) {
+  if (!files.length) return;
+
+  const folder = getProjectMediaFolder();
+
+  files.forEach(function (file) {
+    if (!file || !file.dataBase64) return;
+
+    const fileSize = Number(file.size || 0);
+    if (fileSize > MAX_PROJECT_FILE_SIZE) {
+      throw new Error("File " + (file.name || "") + " lớn hơn 12MB. Hãy nén file rồi upload lại.");
     }
 
-    const lead = normalizeLead(payload.lead || {});
-    const files = Array.isArray(payload.files) ? payload.files : [];
-    const sheetResult = appendLeadToSheet(lead, files);
-    const telegramResult = safeSendLeadToTelegram(lead, files);
+    const contentType = String(file.type || "application/octet-stream");
+    const bytes = Utilities.base64Decode(String(file.dataBase64));
+    const blob = Utilities.newBlob(bytes, contentType, String(file.name || "project-file"));
+    const driveFile = folder.createFile(blob);
 
-    return jsonResponse({
-      ok: sheetResult.status === "sent" || telegramResult.status === "sent",
-      results: [sheetResult, telegramResult],
-    });
-  } catch (error) {
-    return jsonResponse({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const fileInfo = buildDriveFileInfo(driveFile, contentType);
+
+    if (file.field === "image") {
+      project.image = fileInfo.imageUrl || fileInfo.viewUrl;
+      return;
+    }
+
+    if (file.field === "video") {
+      project.video = fileInfo.viewUrl;
+      return;
+    }
+
+    if (file.field === "gallery") {
+      const media = findOrCreateProjectMedia(project, String(file.targetId || ""), contentType, file.name);
+      media.type = contentType.indexOf("video/") === 0 ? "video" : "image";
+      media.url = media.type === "image" ? fileInfo.imageUrl : fileInfo.viewUrl;
+      media.driveFileId = fileInfo.id;
+      media.viewUrl = fileInfo.viewUrl;
+    }
+  });
+}
+
+function findOrCreateProjectMedia(project, targetId, contentType, fileName) {
+  if (!Array.isArray(project.gallery)) project.gallery = [];
+
+  let media = project.gallery.find(function (item) {
+    return item && item.id === targetId;
+  });
+
+  if (!media) {
+    media = {
+      id: targetId || "media-" + Date.now(),
+      type: contentType.indexOf("video/") === 0 ? "video" : "image",
+      url: "",
+      caption: fileName || "Ảnh/video công trình",
+      description: "",
+    };
+    project.gallery.push(media);
+  }
+
+  return media;
+}
+
+function buildDriveFileInfo(file, contentType) {
+  const id = file.getId();
+  const viewUrl = "https://drive.google.com/file/d/" + id + "/view";
+  const imageUrl = contentType.indexOf("image/") === 0
+    ? "https://drive.google.com/thumbnail?id=" + id + "&sz=w1600"
+    : "";
+
+  return {
+    id: id,
+    viewUrl: viewUrl,
+    imageUrl: imageUrl,
+  };
+}
+
+function getProjectMediaFolder() {
+  const configuredFolderId = getScriptProperty("PROJECT_MEDIA_FOLDER_ID");
+
+  if (configuredFolderId) {
+    return DriveApp.getFolderById(configuredFolderId);
+  }
+
+  const folders = DriveApp.getFoldersByName(PROJECT_MEDIA_FOLDER_NAME);
+  if (folders.hasNext()) return folders.next();
+
+  return DriveApp.createFolder(PROJECT_MEDIA_FOLDER_NAME);
+}
+
+function getProjectSheet() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(PROJECTS_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(PROJECTS_SHEET_NAME);
+  }
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "Project ID",
+      "Base Project ID",
+      "Title",
+      "Project JSON",
+      "Status",
+      "Created At",
+      "Updated At",
+    ]);
+  }
+
+  return sheet;
+}
+
+function findProjectRow(sheet, id) {
+  const values = sheet.getDataRange().getValues();
+
+  for (let index = 1; index < values.length; index += 1) {
+    if (String(values[index][0] || "") === id) return index + 1;
+  }
+
+  return 0;
+}
+
+function normalizeProject(input) {
+  const details = Array.isArray(input.details)
+    ? input.details.map(function (item) { return String(item || "").trim(); }).filter(Boolean)
+    : [];
+  const gallery = Array.isArray(input.gallery)
+    ? input.gallery.map(normalizeProjectMedia).filter(function (item) { return Boolean(item); })
+    : [];
+
+  return {
+    id: stringOrDefault(input.id, ""),
+    source: "remote",
+    baseProjectId: stringOrDefault(input.baseProjectId, ""),
+    createdAt: stringOrDefault(input.createdAt, ""),
+    updatedAt: stringOrDefault(input.updatedAt, ""),
+    title: stringOrDefault(input.title, ""),
+    location: stringOrDefault(input.location, "Chưa cập nhật"),
+    type: stringOrDefault(input.type, "Nhà dân"),
+    monthlyBill: stringOrDefault(input.monthlyBill, "Chưa cập nhật"),
+    systemSize: stringOrDefault(input.systemSize, "Chưa cập nhật"),
+    panels: stringOrDefault(input.panels, "Theo phương án"),
+    inverter: stringOrDefault(input.inverter, "Theo phương án"),
+    estimatedOutput: stringOrDefault(input.estimatedOutput, "Theo khảo sát"),
+    payback: stringOrDefault(input.payback, "Từ 3 năm"),
+    cost: stringOrDefault(input.cost, "Theo khảo sát"),
+    hasStorage: Boolean(input.hasStorage),
+    image: stringOrDefault(
+      input.image,
+      "https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=1200&q=80"
+    ),
+    video: stringOrDefault(input.video, ""),
+    gallery: gallery,
+    summary: stringOrDefault(
+      input.summary,
+      "Công trình thực tế do Điện mặt trời Sơn Hà khảo sát, thiết kế và thi công."
+    ),
+    details: details.length ? details : [
+      "Khảo sát mái, hướng nắng, bóng che và vị trí đi dây.",
+      "Tính công suất theo hóa đơn điện và nhu cầu sử dụng thực tế.",
+      "Bàn giao app theo dõi sản lượng sau khi vận hành.",
+    ],
+  };
+}
+
+function normalizeProjectMedia(input) {
+  if (!input) return null;
+
+  return {
+    id: stringOrDefault(input.id, "media-" + Date.now()),
+    type: input.type === "video" ? "video" : "image",
+    url: stringOrDefault(input.url, ""),
+    caption: stringOrDefault(input.caption, input.type === "video" ? "Video công trình" : "Ảnh công trình"),
+    description: stringOrDefault(input.description, ""),
+    driveFileId: stringOrDefault(input.driveFileId, ""),
+    viewUrl: stringOrDefault(input.viewUrl, ""),
+  };
+}
+
+function requireProjectAdminToken(inputToken) {
+  const expectedToken = getScriptProperty("PROJECT_ADMIN_TOKEN");
+
+  if (!expectedToken) {
+    throw new Error("Chưa cấu hình PROJECT_ADMIN_TOKEN trong Script Properties.");
+  }
+
+  if (String(inputToken || "") !== expectedToken) {
+    throw new Error("Mã đồng bộ admin không đúng.");
   }
 }
 
@@ -58,7 +365,7 @@ function safeSendLeadToTelegram(lead, files) {
     return {
       channel: "telegram",
       status: "failed",
-      message: error instanceof Error ? error.message : String(error),
+      message: errorToMessage(error),
     };
   }
 }
@@ -136,10 +443,10 @@ function sendLeadToTelegram(lead, files) {
 
 function getLeadSheet() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  let sheet = spreadsheet.getSheetByName(LEADS_SHEET_NAME);
 
   if (!sheet) {
-    sheet = spreadsheet.insertSheet(SHEET_NAME);
+    sheet = spreadsheet.insertSheet(LEADS_SHEET_NAME);
   }
 
   if (sheet.getLastRow() === 0) {
@@ -257,12 +564,24 @@ function findFileNames(files, field) {
     .join(", ");
 }
 
+function parsePayload(e) {
+  return JSON.parse((e.postData && e.postData.contents) || "{}");
+}
+
+function getParam(e, key) {
+  return e && e.parameter && e.parameter[key] ? String(e.parameter[key]) : "";
+}
+
 function getScriptProperty(key) {
   return PropertiesService.getScriptProperties().getProperty(key) || "";
 }
 
 function stringOrDefault(value, fallback) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function errorToMessage(error) {
+  return error && error.message ? error.message : String(error);
 }
 
 function escapeHtml(value) {

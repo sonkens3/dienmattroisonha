@@ -4,39 +4,41 @@ import { ArrowRight, ChevronLeft, ChevronRight, MapPin, PlayCircle } from "lucid
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { projects as seedProjects, type Project } from "@/data/projects";
-import { loadResolvedLocalProjects, mergeProjectsWithLocal } from "@/lib/localProjects";
+import { isPlayableVideoUrl } from "@/lib/media";
+import { getProjectHref } from "@/lib/projectLinks";
+import { fetchRemoteProjects, mergeProjectsWithRemote } from "@/lib/remoteProjects";
 
 type DisplayProject = Project & {
-  isLocal?: boolean;
+  isRemote?: boolean;
 };
 
 export function FeaturedProjectCarousel() {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [localProjects, setLocalProjects] = useState<Project[]>([]);
+  const [remoteProjects, setRemoteProjects] = useState<Project[]>([]);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadProjects() {
-      const resolved = await loadResolvedLocalProjects();
-      if (mounted) setLocalProjects(resolved);
+      const result = await fetchRemoteProjects({ useCache: true });
+      if (mounted) setRemoteProjects(result.projects);
     }
 
     void loadProjects();
-    window.addEventListener("sonha-projects-updated", loadProjects);
+    window.addEventListener("sonha-remote-projects-updated", loadProjects);
 
     return () => {
       mounted = false;
-      window.removeEventListener("sonha-projects-updated", loadProjects);
+      window.removeEventListener("sonha-remote-projects-updated", loadProjects);
     };
   }, []);
 
   const featuredProjects = useMemo<DisplayProject[]>(() => {
-    return mergeProjectsWithLocal(seedProjects, localProjects)
-      .map((project) => ({ ...project, isLocal: localProjects.some((item) => item.id === project.id) }))
+    return mergeProjectsWithRemote(seedProjects, remoteProjects)
+      .map((project) => ({ ...project, isRemote: remoteProjects.some((item) => item.id === project.id) }))
       .slice(0, 10);
-  }, [localProjects]);
+  }, [remoteProjects]);
 
   const scrollToIndex = useCallback((index: number) => {
     const scroller = scrollerRef.current;
@@ -87,8 +89,7 @@ export function FeaturedProjectCarousel() {
               Dự án thực tế để anh/chị tham khảo
             </h2>
             <p className="mt-4 text-base leading-7 text-slate-600 md:text-lg">
-              Xem các công trình đã lắp đặt, cấu hình hệ thống và hiệu quả dự kiến
-              để lựa chọn phương án phù hợp hơn cho công trình của mình.
+              Xem các công trình đã lắp đặt, cấu hình hệ thống và hiệu quả dự kiến để lựa chọn phương án phù hợp hơn cho công trình của mình.
             </p>
           </div>
           <Link
@@ -121,67 +122,72 @@ export function FeaturedProjectCarousel() {
             ref={scrollerRef}
             className="carousel-no-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-1"
           >
-            {featuredProjects.map((project, index) => (
-              <article
-                key={project.id}
-                className={`min-w-[88%] snap-center overflow-hidden rounded-lg border bg-white shadow-sm transition duration-300 sm:min-w-[360px] lg:min-w-[32%] ${
-                  index === activeIndex
-                    ? "border-teal-300 shadow-lg shadow-teal-900/10"
-                    : "border-slate-200 opacity-95"
-                }`}
-              >
-                <Link href={`/projects/${project.id}`} className="group block">
-                  <div className="relative aspect-[16/10] overflow-hidden bg-slate-200">
-                    {project.video ? (
-                      <video
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                        src={project.video}
-                        poster={project.image}
-                        muted
-                        playsInline
-                        preload="metadata"
-                      />
-                    ) : (
-                      <div
-                        className="h-full w-full bg-cover bg-center transition duration-300 group-hover:scale-105"
-                        style={{ backgroundImage: `url('${project.image}')` }}
-                      />
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent p-4 text-white">
-                      <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-wide">
-                        <span>{project.type}</span>
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin size={13} aria-hidden />
-                          {project.location}
-                        </span>
-                        {project.video ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-1">
-                            <PlayCircle size={13} aria-hidden />
-                            Video
+            {featuredProjects.map((project, index) => {
+              const href = getProjectHref(project.id);
+              const canPlayVideo = isPlayableVideoUrl(project.video);
+
+              return (
+                <article
+                  key={project.id}
+                  className={`min-w-[88%] snap-center overflow-hidden rounded-lg border bg-white shadow-sm transition duration-300 sm:min-w-[360px] lg:min-w-[32%] ${
+                    index === activeIndex
+                      ? "border-teal-300 shadow-lg shadow-teal-900/10"
+                      : "border-slate-200 opacity-95"
+                  }`}
+                >
+                  <Link href={href} className="group block">
+                    <div className="relative aspect-[16/10] overflow-hidden bg-slate-200">
+                      {project.video && canPlayVideo ? (
+                        <video
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                          src={project.video}
+                          poster={project.image}
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                      ) : (
+                        <div
+                          className="h-full w-full bg-cover bg-center transition duration-300 group-hover:scale-105"
+                          style={{ backgroundImage: `url('${project.image}')` }}
+                        />
+                      )}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent p-4 text-white">
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-wide">
+                          <span>{project.type}</span>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin size={13} aria-hidden />
+                            {project.location}
                           </span>
-                        ) : null}
+                          {project.video ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-1">
+                              <PlayCircle size={13} aria-hidden />
+                              Video
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
-                <div className="p-4">
-                  <h3 className="line-clamp-2 text-lg font-black leading-snug text-slate-950">
-                    {project.title}
-                  </h3>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                    <Spec label="Công suất" value={project.systemSize} />
-                    <Spec label="Hoàn vốn" value={project.payback} />
-                  </div>
-                  <Link
-                    href={`/projects/${project.id}`}
-                    className="mt-4 inline-flex items-center gap-2 text-sm font-black text-teal-800 hover:text-teal-950"
-                  >
-                    Xem chi tiết công trình
-                    <ArrowRight size={16} aria-hidden />
                   </Link>
-                </div>
-              </article>
-            ))}
+                  <div className="p-4">
+                    <h3 className="line-clamp-2 text-lg font-black leading-snug text-slate-950">
+                      {project.title}
+                    </h3>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <Spec label="Công suất" value={project.systemSize} />
+                      <Spec label="Hoàn vốn" value={project.payback} />
+                    </div>
+                    <Link
+                      href={href}
+                      className="mt-4 inline-flex items-center gap-2 text-sm font-black text-teal-800 hover:text-teal-950"
+                    >
+                      Xem chi tiết công trình
+                      <ArrowRight size={16} aria-hidden />
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           <div className="mt-5 flex justify-center gap-2">
