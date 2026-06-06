@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ComponentType } from "react";
-import { Clock, Mail, MapPin, Phone } from "lucide-react";
+import { Clock, ExternalLink, Mail, MapPin, Navigation, Phone } from "lucide-react";
 import { LeadForm } from "@/components/LeadForm";
 import { SectionHeading } from "@/components/SectionHeading";
 import { contactInfo } from "@/data/contact";
@@ -53,14 +53,20 @@ function ContactItem({
       <div>
         <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
         {href ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-1 inline-flex font-black text-teal-800 underline-offset-4 hover:text-teal-950 hover:underline"
-          >
-            {value}
-          </a>
+          <div className="mt-1 grid gap-3">
+            <p className="font-black text-slate-950">{value}</p>
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-teal-900/10 ring-1 ring-teal-600/10 transition hover:bg-teal-800 sm:w-fit"
+              aria-label={`Mở Google Maps tới ${value}`}
+            >
+              <Navigation size={16} aria-hidden />
+              Xem chỉ đường trên Google Maps
+              <ExternalLink size={14} aria-hidden />
+            </a>
+          </div>
         ) : (
           <p className="mt-1 font-black text-slate-950">{value}</p>
         )}
