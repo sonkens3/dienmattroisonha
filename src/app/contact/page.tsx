@@ -24,7 +24,7 @@ export default function ContactPage() {
           <div className="mt-8 grid gap-3">
             <ContactItem icon={Phone} label="Điện thoại/Zalo" value={contactInfo.phone} />
             <ContactItem icon={Mail} label="Email" value={contactInfo.email} />
-            <ContactItem icon={MapPin} label="Địa chỉ" value={contactInfo.address} />
+            <ContactItem icon={MapPin} label="Địa chỉ" value={contactInfo.address} href={contactInfo.mapHref} />
             <ContactItem icon={Clock} label="Giờ làm việc" value={contactInfo.workingHours} />
           </div>
         </div>
@@ -38,10 +38,12 @@ function ContactItem({
   icon: Icon,
   label,
   value,
+  href,
 }: {
   icon: ComponentType<{ size?: number; "aria-hidden"?: boolean }>;
   label: string;
   value: string;
+  href?: string;
 }) {
   return (
     <div className="flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -50,7 +52,18 @@ function ContactItem({
       </span>
       <div>
         <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
-        <p className="mt-1 font-black text-slate-950">{value}</p>
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-flex font-black text-teal-800 underline-offset-4 hover:text-teal-950 hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          <p className="mt-1 font-black text-slate-950">{value}</p>
+        )}
       </div>
     </div>
   );

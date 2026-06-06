@@ -37,7 +37,17 @@ export function Footer() {
           <div className="mt-3 grid gap-2 text-sm text-slate-300">
             <p>Điện thoại/Zalo: {contactInfo.phone}</p>
             <p>Email: {contactInfo.email}</p>
-            <p>Địa chỉ: {contactInfo.address}</p>
+            <p>
+              Địa chỉ:{" "}
+              <a
+                href={contactInfo.mapHref}
+                target="_blank"
+                rel="noreferrer"
+                className="underline-offset-4 hover:text-amber-300 hover:underline"
+              >
+                {contactInfo.address}
+              </a>
+            </p>
             <p>Giờ làm việc: {contactInfo.workingHours}</p>
           </div>
         </div>
